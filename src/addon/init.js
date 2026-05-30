@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.4.1';
+  MM.VERSION = '0.4.2';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -199,19 +199,40 @@
         var q = args && args.q;
         var offset = Math.max(0, Number(args && args.offset) || 0);
         var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
-        // 'all' + search via the documented app.db.getTracklist (whole library = collID -1).
-        // Browse-by artist/album/genre is pending the real API (see introspect output).
-        if (view !== 'all') return { error: 'browse-todo', view: view };
-        var token = 'lib:all', base;
-        try { base = a.db.getTracklist('SELECT * FROM Songs', -1); }
-        catch (e) { return { error: 'db-failed', message: String(e) }; }
-        cachePut(token, base);
-        return loadedList(base).then(function (l) {
-          if (q && l.filterBySearchPhrase) { l.filterBySearchPhrase(q); token = 'search'; cachePut(token, l); return loadedList(l); }
-          return l;
-        }).then(function (l) {
-          var r = readItems(l, offset, limit, trackItem);
-          return { token: token, kind: 'tracks', total: r.total, items: r.items, truncated: r.truncated };
+
+        // All / search → SQL over Songs (filterBySearchPhrase is a no-op on this build).
+        if (view === 'all') {
+          var sql = 'SELECT * FROM Songs', token = 'lib:all';
+          if (q) {
+            var like = "'%" + String(q).replace(/'/g, "''") + "%'";
+            sql = 'SELECT * FROM Songs WHERE SongTitle LIKE ' + like + ' OR Artist LIKE ' + like + ' OR Album LIKE ' + like;
+            token = 'search';
+          }
+          var base;
+          try { base = a.db.getTracklist(sql, -1); }
+          catch (e) { return { error: 'db-failed', message: String(e), sql: sql }; }
+          cachePut(token, base);
+          return loadedList(base).then(function (l) {
+            var r = readItems(l, offset, limit, trackItem);
+            return { token: token, kind: 'tracks', total: r.total, items: r.items, truncated: r.truncated };
+          });
+        }
+
+        // Browse-by → app.db.getArtistList / getAlbumList / getGenresList (note plural Genres).
+        var getter = view === 'artists' ? 'getArtistList' : view === 'albums' ? 'getAlbumList' : view === 'genres' ? 'getGenresList' : null;
+        if (!getter || !a.db || typeof a.db[getter] !== 'function') return { error: 'browse-unavailable', view: view };
+        var list;
+        try { list = a.db[getter]('', -1); }
+        catch (e) { return { error: 'browse-failed', view: view, message: String(e) }; }
+        var btoken = 'lib:' + view;
+        cachePut(btoken, list);
+        return loadedList(list).then(function (l) {
+          var r = readItems(l, offset, limit, function (it, i) {
+            return { index: i, name: it && (it.name || it.title || it.artist || it.genre), drillable: !!(it && it.getTracklist) };
+          });
+          var out = { token: btoken, kind: view, total: r.total, items: r.items, truncated: r.truncated };
+          try { var s = valueAt(l, 0); out._sampleKeys = s ? Object.keys(s).slice(0, 40) : null; } catch (e) { out._sampleErr = String(e); }
+          return out;
         });
       },
       open: function (args) {
