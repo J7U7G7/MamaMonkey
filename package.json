@@ -8,9 +8,11 @@
     "test": "node --test",
     "build": "node scripts/build.mjs",
     "bundle-web": "node scripts/bundle-web.mjs",
-    "companion:dev": "node scripts/bundle-web.mjs && node src/companion/server.js"
+    "companion:dev": "node scripts/bundle-web.mjs && node src/companion/server.js",
+    "gen-icons": "node scripts/gen-icons.mjs"
   },
   "devDependencies": {
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.5.16",
+    "sharp": "^0.34.5"
   }
 }
