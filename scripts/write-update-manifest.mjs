@@ -5,12 +5,11 @@ import { buildUpdateManifest } from './lib/manifest.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-export function computeManifest(info, downloadURL) {
+export function computeManifest(info, updateUrl) {
   return buildUpdateManifest({
-    id: info.id,
     version: info.version,
     minAppVersion: info.minAppVersion,
-    downloadURL,
+    updateUrl,
   });
 }
 
@@ -21,13 +20,13 @@ function arg(name) {
 
 // Only run as a CLI (not when imported by tests).
 if (process.argv[1] && process.argv[1].endsWith('write-update-manifest.mjs')) {
-  const downloadURL = arg('--download-url');
-  if (!downloadURL) {
-    console.error('Usage: write-update-manifest.mjs --download-url <url>');
+  const updateUrl = arg('--update-url');
+  if (!updateUrl) {
+    console.error('Usage: write-update-manifest.mjs --update-url <url-to-mmip>');
     process.exit(1);
   }
   const info = JSON.parse(readFileSync(join(root, 'src', 'addon', 'info.json'), 'utf8'));
-  const manifest = computeManifest(info, downloadURL);
+  const manifest = computeManifest(info, updateUrl);
   writeFileSync(join(root, 'update.json'), JSON.stringify(manifest, null, 2) + '\n');
   console.log('Wrote update.json:', manifest);
 }

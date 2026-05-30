@@ -1,6 +1,6 @@
 {
   "name": "mamamonkey",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "type": "module",
   "description": "Web-based MediaMonkey 5 remote control for iPhone (Phase 0: the update spine).",

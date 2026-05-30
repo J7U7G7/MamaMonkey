@@ -45,7 +45,7 @@ jobs:
       - name: Regenerate update.json pointing at the raw (no-redirect) URL
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          node scripts/write-update-manifest.mjs --download-url "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/download/mamamonkey-${VERSION}.mmip"
+          node scripts/write-update-manifest.mjs --update-url "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/download/mamamonkey-${VERSION}.mmip"
 
       - name: Commit update.json + download/ back to main
         run: |
