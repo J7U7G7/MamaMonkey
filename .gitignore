@@ -3,3 +3,6 @@ dist/
 .superpowers/
 .DS_Store
 *.log
+# Ventis-licensed MediaMonkey sample scripts — reference only, do not publish
+SampleScripts.zip
+samples/
