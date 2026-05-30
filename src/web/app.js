@@ -28,7 +28,8 @@
     $('title').textContent = (r.track && r.track.title) || '—';
     $('artist').textContent = (r.track && r.track.artist) || '—';
     $('album').textContent = (r.track && r.track.album) || '—';
-    $('playpause').textContent = r.isPlaying ? '⏸' : '▶';
+    var playing = r.isPlaying && !r.paused;
+    $('playpause').textContent = playing ? '⏸' : '▶';
     if (r.durationMs) {
       $('bar').style.width = Math.min(100, (100 * (r.positionMs || 0) / r.durationMs)) + '%';
       $('pos').textContent = fmt(r.positionMs); $('dur').textContent = fmt(r.durationMs);
