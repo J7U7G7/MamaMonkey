@@ -12,19 +12,26 @@
 <body>
   <main id="app">
     <h1>🐒 MamaMonkey</h1>
-    <div id="art" class="art">♪</div>
+    <img id="art" class="art" alt="" hidden>
+    <div id="artph" class="art">♪</div>
     <div id="title" class="title">—</div>
     <div id="artist" class="artist">—</div>
     <div id="album" class="album">—</div>
-    <div class="progress"><div id="bar" class="bar"></div></div>
+    <div class="progress" id="progress"><div id="bar" class="bar"></div></div>
     <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
     <div class="transport">
       <button id="prev" aria-label="Previous">⏮</button>
       <button id="playpause" aria-label="Play/Pause">⏯</button>
       <button id="next" aria-label="Next">⏭</button>
     </div>
+    <div class="modes">
+      <button id="shuffle" class="mode" aria-label="Shuffle">🔀</button>
+      <button id="repeat" class="mode" aria-label="Repeat">🔁</button>
+      <button id="queueBtn" class="mode" aria-label="Queue">☰</button>
+    </div>
     <div class="volume">🔊 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.5"></div>
     <div id="status" class="status">connecting…</div>
+    <div id="queuePanel" class="queue" hidden></div>
   </main>
   <script src="/app.js"></script>
 </body>
