@@ -25,10 +25,8 @@ function loadAll() {
     return { count: items.length, whenLoaded: function(){ return Promise.resolve(this); }, locked: function(f){ f(); },
       getValue: function(i){ return items[i]; } };
   }
-  const fakeCollections = {
+  const fakeDb = {
     getTracklist: function(){ return tracklist([{id:1,title:'T1',artist:'A1',album:'Al1'},{id:2,title:'T2',artist:'A2',album:'Al2'}]); },
-    getArtistList: function(){ return tracklist([{name:'A1',getTracklist:function(){return tracklist([{id:1,title:'T1',artist:'A1'}]);}}]); },
-    getAlbumList: function(){ return tracklist([]); }, getGenreList: function(){ return tracklist([]); },
   };
   const _pl = { id: 7, name: 'P', getTracklist: function(){ return tracklist([{id:1,title:'T1'}]); },
     addTracksAsync: function(){return Promise.resolve();}, commitAsync:function(){return Promise.resolve();},
@@ -41,7 +39,7 @@ function loadAll() {
   for (const f of files) {
     if (f === 'init.js') {
       sandbox.MamaMonkey.bindings = {
-        getApp: () => ({ player: fakePlayer, collections: fakeCollections, playlists: fakePlaylists }),
+        getApp: () => ({ player: fakePlayer, db: fakeDb, playlists: fakePlaylists }),
         registerRemoteRequest: (h) => { captured.handler = h; return { ok: true }; },
         showToast: (m) => { captured.toasts.push(m); return true; },
         showDialog: () => true,

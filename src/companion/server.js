@@ -45,7 +45,8 @@ export function createHandler({ assets, forward }) {
         const key = path === '/' ? '/index.html' : path;
         const asset = assets[key];
         if (asset) {
-          res.writeHead(200, { 'Content-Type': asset.contentType });
+          // no-store so phones never serve a stale PWA after an update.
+          res.writeHead(200, { 'Content-Type': asset.contentType, 'Cache-Control': 'no-store' });
           return res.end(Buffer.from(asset.base64, 'base64'));
         }
       }

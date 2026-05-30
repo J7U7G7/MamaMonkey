@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.4.0';
+  MM.VERSION = '0.4.1';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -199,20 +199,19 @@
         var q = args && args.q;
         var offset = Math.max(0, Number(args && args.offset) || 0);
         var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
-        var base, token, map = trackItem, isTracks = true;
-        try {
-          if (view === 'artists') { base = a.collections.getArtistList(); token = 'lib:artists'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.name || it.title), drillable: !!(it && it.getTracklist) }; }; }
-          else if (view === 'albums') { base = a.collections.getAlbumList(); token = 'lib:albums'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.title || it.name), artist: it && it.artist, drillable: !!(it && it.getTracklist) }; }; }
-          else if (view === 'genres') { base = a.collections.getGenreList(); token = 'lib:genres'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.name || it.title), drillable: !!(it && it.getTracklist) }; }; }
-          else { base = a.collections.getTracklist(); token = 'lib:all'; }
-        } catch (e) { return { error: 'list-failed', view: view, message: String(e) }; }
+        // 'all' + search via the documented app.db.getTracklist (whole library = collID -1).
+        // Browse-by artist/album/genre is pending the real API (see introspect output).
+        if (view !== 'all') return { error: 'browse-todo', view: view };
+        var token = 'lib:all', base;
+        try { base = a.db.getTracklist('SELECT * FROM Songs', -1); }
+        catch (e) { return { error: 'db-failed', message: String(e) }; }
         cachePut(token, base);
         return loadedList(base).then(function (l) {
           if (q && l.filterBySearchPhrase) { l.filterBySearchPhrase(q); token = 'search'; cachePut(token, l); return loadedList(l); }
           return l;
         }).then(function (l) {
-          var r = readItems(l, offset, limit, map);
-          return { token: token, kind: isTracks ? 'tracks' : view, total: r.total, items: r.items, truncated: r.truncated };
+          var r = readItems(l, offset, limit, trackItem);
+          return { token: token, kind: 'tracks', total: r.total, items: r.items, truncated: r.truncated };
         });
       },
       open: function (args) {
@@ -297,13 +296,19 @@
         }).then(function () { return { ok: true }; });
       },
       introspect: function () {
-        var out = { collections: {}, playlists: {} };
-        try { out.collections.has = !!a.collections; } catch (e) {}
-        try { var al = a.collections.getArtistList(); out.collections.artist = { keys: al ? Object.keys(al).slice(0, 40) : null }; if (al && al.count !== undefined) out.collections.artist.count = al.count; } catch (e) { out.collections.artistErr = String(e); }
-        try { var alb = a.collections.getAlbumList(); out.collections.albumKeys = alb ? Object.keys(alb).slice(0, 40) : null; } catch (e) { out.collections.albumErr = String(e); }
-        try { var g = a.collections.getGenreList(); out.collections.genreKeys = g ? Object.keys(g).slice(0, 40) : null; } catch (e) { out.collections.genreErr = String(e); }
-        try { out.playlists.hasRoot = !!(a.playlists && a.playlists.root); out.playlists.rootKeys = a.playlists ? Object.keys(a.playlists).slice(0, 40) : null; } catch (e) { out.playlists.err = String(e); }
-        return out;
+        var out = {};
+        function keys(o) { try { return o ? Object.keys(o).slice(0, 80) : null; } catch (e) { return 'err:' + e; } }
+        out.appKeys = keys(a);
+        out.dbKeys = keys(a && a.db);
+        out.collKeys = keys(a && a.collections);
+        out.plKeys = keys(a && a.playlists);
+        // Confirm the documented library query path + row count.
+        try {
+          var tl = a.db.getTracklist('SELECT * FROM Songs', -1);
+          return Promise.resolve(tl && tl.whenLoaded ? tl.whenLoaded() : tl)
+            .then(function (l) { out.dbTracklistCount = (l && l.count) || 0; return out; })
+            .catch(function (e) { out.dbTracklistErr = String(e); return out; });
+        } catch (e) { out.dbTracklistThrow = String(e); return out; }
       },
     };
   }
