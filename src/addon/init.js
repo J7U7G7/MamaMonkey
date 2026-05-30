@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.3.0';
+  MM.VERSION = '0.3.1';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -11,9 +11,16 @@
     return t.summary || ((t.artist || '') + ' - ' + (t.title || ''));
   }
 
-  // Read a file:/// thumbnail into a data: URL (browser env inside MM).
-  function readFileAsDataUrl(fileUrl) {
-    return fetch(fileUrl)
+  // MM cover paths can be a Windows path (C:\...) or a file:/// URL. fetch needs file:///.
+  function toFileUrl(p) {
+    var s = String(p || '');
+    if (/^file:/i.test(s)) return s;
+    return 'file:///' + s.replace(/\\/g, '/').replace(/^\/+/, '');
+  }
+
+  // Read a local thumbnail into a data: URL (browser env inside MM).
+  function readFileAsDataUrl(path) {
+    return fetch(toFileUrl(path))
       .then(function (r) { return r.blob(); })
       .then(function (blob) {
         return new Promise(function (resolve, reject) {
@@ -110,22 +117,48 @@
         var t = null;
         try { t = a.player.getCurrentTrack && a.player.getCurrentTrack(); } catch (e) {}
         var key = trackKeyOf(t);
-        if (!t || !t.coverList) return { available: false, key: key };
-        var cl = t.coverList;
-        return Promise.resolve(cl.whenLoaded ? cl.whenLoaded() : cl).then(function (loaded) {
-          var list = loaded || cl;
-          if (!list || !list.count) return { available: false, key: key };
+        if (!t) return { available: false, stage: 'no-track', key: key };
+
+        // Resolve the cover path: prefer the synchronous getFirstCoverThumb, then
+        // cover.picturePath, then the async getThumbAsync callback. Each is best-effort.
+        function resolvePath() {
           return new Promise(function (resolve) {
             try {
-              list.getValue(0).getThumbAsync(300, 300, function (link) {
-                if (!link || link === '-') { resolve({ available: false, key: key }); return; }
-                readFileAsDataUrl(link).then(function (dataUrl) {
-                  resolve({ available: true, key: key, dataUrl: dataUrl });
-                }).catch(function () { resolve({ available: false, key: key, link: link }); });
-              });
-            } catch (e) { resolve({ available: false, key: key, error: String(e) }); }
+              if (typeof t.getFirstCoverThumb === 'function') {
+                var p = t.getFirstCoverThumb(300, 300);
+                if (p && p !== '-') { resolve({ path: p, via: 'getFirstCoverThumb' }); return; }
+              }
+            } catch (e) {}
+            try {
+              var cover = (typeof t.getFirstCover === 'function') ? t.getFirstCover() : null;
+              if (cover && cover.picturePath) { resolve({ path: cover.picturePath, via: 'picturePath' }); return; }
+              if (cover && typeof cover.getThumbAsync === 'function') {
+                cover.getThumbAsync(300, 300, function (link) {
+                  resolve(link && link !== '-' ? { path: link, via: 'getThumbAsync' } : { path: null });
+                });
+                return;
+              }
+            } catch (e) {}
+            resolve({ path: null });
           });
+        }
+
+        var work = resolvePath().then(function (r) {
+          if (!r.path) return { available: false, stage: 'no-cover', key: key };
+          return readFileAsDataUrl(r.path).then(function (dataUrl) {
+            return { available: true, key: key, dataUrl: dataUrl, via: r.via };
+          }).catch(function (e) {
+            return { available: false, stage: 'read-fail', path: String(r.path), via: r.via, error: String(e), key: key };
+          });
+        }).catch(function (e) {
+          return { available: false, stage: 'resolve-fail', error: String(e), key: key };
         });
+
+        // Never let the remoteRequest hang: cap at 6s and report the path for diagnosis.
+        var timeout = new Promise(function (resolve) {
+          setTimeout(function () { resolve({ available: false, stage: 'timeout', key: key }); }, 6000);
+        });
+        return Promise.race([work, timeout]);
       },
     };
   }
