@@ -13,8 +13,12 @@ function loadAll() {
   const fakePlayer = {
     isPlaying: true, paused: false, volume: 0.4,
     trackPositionMS: 5000, trackLengthMS: 200000,
+    shufflePlaylist: false, repeatPlaylist: false, repeatOne: false, playlistPos: 2,
     getCurrentTrack: () => ({ title: 'T', artist: 'Benoit & Sergio', album: 'Alb', summary: 'A - T' }),
     playAsync: () => Promise.resolve('p'),
+    seekMSAsync: function(ms){ this._seek = ms; return Promise.resolve(); },
+    setPlaylistPosAsync: function(i){ this._jumped = i; return Promise.resolve(); },
+    getTracklist: function(){ return { count: 2, getValue: function(i){ return { title: 'T'+i, artist: 'A'+i }; } }; },
   };
   const sandbox = { console };
   vm.createContext(sandbox);
@@ -61,4 +65,43 @@ test('status command reports player state', async () => {
   assert.equal(out.response.result.track.title, 'T');
   assert.equal(out.response.result.track.artist, 'Benoit & Sergio');
   assert.equal(out.response.result.durationMs, 200000);
+});
+
+test('seek clamps to duration and calls seekMSAsync', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'seek', args: { ms: 999999 } }));
+  assert.equal(out.response.ok, true);
+  assert.equal(out.response.result.ms, 200000); // clamped to trackLengthMS
+});
+
+test('setRepeat modes set the right booleans', async () => {
+  const { captured } = loadAll();
+  let out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'setRepeat', args: { mode: 'one' } }));
+  assert.equal(out.response.result.repeatOne, true);
+  assert.equal(out.response.result.repeatAll, false);
+  out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'setRepeat', args: { mode: 'all' } }));
+  assert.equal(out.response.result.repeatAll, true);
+  assert.equal(out.response.result.repeatOne, false);
+});
+
+test('setShuffle toggles the flag', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'setShuffle', args: { on: true } }));
+  assert.equal(out.response.result.shuffle, true);
+});
+
+test('queue returns index + items from the tracklist', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'queue' }));
+  assert.equal(out.response.result.index, 2);
+  assert.equal(out.response.result.count, 2);
+  assert.equal(out.response.result.items[0].title, 'T0');
+});
+
+test('status includes shuffle/repeat/queueIndex/trackKey', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'status' }));
+  assert.equal(typeof out.response.result.shuffle, 'boolean');
+  assert.equal(out.response.result.queueIndex, 2);
+  assert.ok(out.response.result.trackKey.length > 0);
 });
