@@ -1,0 +1,27 @@
+name: companion-release
+on:
+  push:
+    tags:
+      - 'companion-v*'
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci
+      - run: npm test
+      - name: Bundle PWA into assets.js
+        run: node scripts/bundle-web.mjs
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - name: Compile Windows exe
+        run: |
+          mkdir -p dist
+          bun build --compile --target=bun-windows-x64 src/companion/server.js --outfile dist/MamaMonkeyCompanion.exe
+      - name: Release
+        env: { GH_TOKEN: ${{ github.token }} }
+        run: gh release create "${GITHUB_REF_NAME}" dist/MamaMonkeyCompanion.exe --title "${GITHUB_REF_NAME}" --notes "MamaMonkey companion ${GITHUB_REF_NAME}"

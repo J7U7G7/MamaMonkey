@@ -6,7 +6,9 @@
   "description": "Web-based MediaMonkey 5 remote control for iPhone (Phase 0: the update spine).",
   "scripts": {
     "test": "node --test",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "bundle-web": "node scripts/bundle-web.mjs",
+    "companion:dev": "node scripts/bundle-web.mjs && node src/companion/server.js"
   },
   "devDependencies": {
     "adm-zip": "^0.5.16"
