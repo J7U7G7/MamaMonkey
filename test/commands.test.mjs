@@ -12,7 +12,10 @@ test('dispatches a sync handler and wraps the result', async () => {
   const d = createCommandDispatcher({ ping: () => ({ pong: true }) });
   const out = await d.handle(makeReq('ping'));
   assert.equal(out.handled, true);
-  assert.deepEqual(out.response, { ok: true, command: 'ping', result: { pong: true } });
+  // Normalize through JSON in the host realm: the dispatcher builds objects in the
+  // vm sandbox, whose Object.prototype differs from the test realm's (Node deepStrictEqual
+  // compares prototypes). JSON round-trip is also exactly how responses cross the wire.
+  assert.deepEqual(JSON.parse(JSON.stringify(out.response)), { ok: true, command: 'ping', result: { pong: true } });
 });
 
 test('awaits async handlers', async () => {

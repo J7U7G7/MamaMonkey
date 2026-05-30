@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:www.mediamonkey.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(scripts/start-server.sh --project-dir /Users/777consulting/C0D3/MamaMonkey)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(command -v nvm node npm)",
+      "Read(//Users/777consulting/.nvm/versions/**)",
+      "Read(//usr/local/n/versions/**)",
+      "Bash(brew --prefix)",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(git ls-remote *)",
+      "Bash(mkdir -p ~/.ssh)",
+      "Bash(ssh-keyscan -t ed25519,rsa github.com)",
+      "Bash(ssh -o StrictHostKeyChecking=accept-new -T git@github.com)",
+      "Read(//Users/777consulting/.ssh/**)",
+      "Bash(gh auth *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git add *)",
+      "Bash(git -c user.name=J7U7G7 -c user.email=tripleseptconsulting@gmail.com commit -q -m 'docs: Phase 0 design spec \\(the update spine\\) *)",
+      "Bash(git push *)",
+      "Bash(git -c user.name=J7U7G7 -c user.email=tripleseptconsulting@gmail.com commit -q -m 'docs: Phase 0 implementation plan \\(the update spine\\) *)",
+      "Bash(/opt/homebrew/bin/node *)",
+      "Bash(git -c user.name=J7U7G7 -c user.email=tripleseptconsulting@gmail.com commit -m ' *)"
+    ]
+  }
+}

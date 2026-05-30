@@ -21,15 +21,14 @@
         if (typeof fn !== 'function') {
           return Promise.resolve({ handled: true, response: { ok: false, command: req.command, error: 'unknown command: ' + req.command } });
         }
-        var parse = (typeof _hostJSONParse === 'function') ? _hostJSONParse : JSON.parse;  // jshint ignore:line
         return Promise.resolve()
           .then(function () { return fn(req.args || {}); })
           .then(
             function (result) {
-              return parse(JSON.stringify({ handled: true, response: { ok: true, command: req.command, result: result === undefined ? null : result } }));
+              return { handled: true, response: { ok: true, command: req.command, result: result === undefined ? null : result } };
             },
             function (err) {
-              return parse(JSON.stringify({ handled: true, response: { ok: false, command: req.command, error: String((err && err.message) || err) } }));
+              return { handled: true, response: { ok: false, command: req.command, error: String((err && err.message) || err) } };
             }
           );
       },
