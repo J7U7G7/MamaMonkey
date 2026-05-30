@@ -112,6 +112,9 @@
   }
   document.querySelectorAll('.tab').forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab); }; });
 
+  // The companion relays the addon's {ok,command,result} envelope; Phase 3 data is under .result.
+  function unwrap(env) { return (env && env.result) || {}; }
+
   // ---------- action sheet ----------
   function sheet(options) {
     var s = $('sheet'); s.innerHTML = '';
@@ -146,8 +149,10 @@
     if (onMore) { var m = document.createElement('div'); m.className = 'more'; m.textContent = '⋯'; m.onclick = function (e) { e.stopPropagation(); onMore(); }; row.appendChild(m); }
     return row;
   }
-  function renderLib(res) {
+  function renderLib(env) {
+    var res = unwrap(env);
     libList.innerHTML = ''; libToken = res.token; libKind = res.kind;
+    if (res.error) { libList.appendChild(rowEl('Unavailable', String(res.error), function () {}, null)); return; }
     (res.items || []).forEach(function (it) {
       if (res.kind === 'tracks') {
         libList.appendChild(rowEl(it.title, it.artist + (it.album ? ' · ' + it.album : ''),
@@ -155,7 +160,7 @@
       } else {
         libList.appendChild(rowEl(it.name, res.kind.slice(0, -1),
           function () { cmd('open', { token: res.token, index: it.index }).then(renderLib); },
-          function () { cmd('open', { token: res.token, index: it.index }).then(function (r) { playSheet(r.token); }); }));
+          function () { cmd('open', { token: res.token, index: it.index }).then(function (r) { playSheet(unwrap(r).token); }); }));
       }
     });
     libList.dataset.loaded = '1';
@@ -169,14 +174,15 @@
   // ---------- playlists ----------
   var plsList = $('plsList');
   function loadPlaylists() {
-    cmd('playlists').then(function (res) {
+    cmd('playlists').then(function (env) {
+      var res = unwrap(env);
       plsList.innerHTML = '';
       (res.items || []).forEach(function (p) {
         plsList.appendChild(rowEl(p.title, p.isFolder ? 'folder' : 'playlist',
           function () { openPlaylist(p); },
           function () {
             sheet([
-              { label: '▶ Play', fn: function () { cmd('playlistTracks', { id: p.id }).then(function (r) { cmd('play', { token: r.token, mode: 'now' }).then(function () { showTab('now'); poll(); }); }); } },
+              { label: '▶ Play', fn: function () { cmd('playlistTracks', { id: p.id }).then(function (r) { cmd('play', { token: unwrap(r).token, mode: 'now' }).then(function () { showTab('now'); poll(); }); }); } },
               { label: '✏️ Rename', fn: function () { var n = prompt('New name', p.title); if (n) cmd('playlistRename', { id: p.id, name: n }).then(loadPlaylists); } },
               { label: '🗑 Delete', fn: function () { if (confirm('Delete "' + p.title + '"?')) cmd('playlistDelete', { id: p.id }).then(loadPlaylists); } },
               { label: 'Cancel', cancel: true },
@@ -186,7 +192,8 @@
     });
   }
   function openPlaylist(p) {
-    cmd('playlistTracks', { id: p.id }).then(function (res) {
+    cmd('playlistTracks', { id: p.id }).then(function (env) {
+      var res = unwrap(env);
       plsList.innerHTML = '';
       var back = rowEl('‹ ' + p.title, 'tap a track to play', loadPlaylists, null); plsList.appendChild(back);
       (res.items || []).forEach(function (it) {
@@ -205,7 +212,8 @@
 
   // add-to-playlist: pick a playlist then add the cached token
   function addToPlaylistFlow(token) {
-    cmd('playlists').then(function (res) {
+    cmd('playlists').then(function (env) {
+      var res = unwrap(env);
       var opts = (res.items || []).filter(function (p) { return !p.isFolder; }).map(function (p) {
         return { label: p.title, fn: function () { cmd('playlistAdd', { id: p.id, token: token }); } };
       });
