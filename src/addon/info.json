@@ -1,0 +1,11 @@
+{
+  "id": "mamamonkey",
+  "title": "MamaMonkey",
+  "description": "iPhone remote control for MediaMonkey (Phase 0: update spine).",
+  "version": "0.1.0",
+  "type": "general",
+  "author": "J7U7G7",
+  "minAppVersion": "5.0.0",
+  "updateURL": "https://raw.githubusercontent.com/J7U7G7/MamaMonkey/main/update.json",
+  "init": "init.js"
+}
