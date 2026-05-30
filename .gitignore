@@ -3,6 +3,8 @@ dist/
 .superpowers/
 .DS_Store
 *.log
+# Generated — rebuild with: node scripts/bundle-web.mjs
+src/companion/assets.js
 # Ventis-licensed MediaMonkey sample scripts — reference only, do not publish
 SampleScripts.zip
 samples/
