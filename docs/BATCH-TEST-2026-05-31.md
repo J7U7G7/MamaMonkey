@@ -4,7 +4,7 @@ Everything below was built offline (no live PC access the evening of 05-30). Dep
 
 ## 0. Deploy (once)
 - [ ] **Addon → v0.4.2**: MediaMonkey → check for updates → install → **fully restart MM**.
-- [ ] **Companion → companion-v0.2.0**: download the new `MamaMonkeyCompanion.exe` from the release, run it (SmartScreen → "Run anyway"; allow through the firewall on private network). It prints the URL.
+- [ ] **Companion → companion-v0.2.1** (latest — includes the Library/Playlists fix + theme): download the new `MamaMonkeyCompanion.exe` from the companion-v0.2.1 release, run it (SmartScreen → "Run anyway"; allow through the firewall on private network). It prints the URL.
 - [ ] **iPhone**: open the printed `http://<PC-IP>:8088`, then **Add to Home Screen** → you should get the pink monkey icon, full-screen app.
 
 ## 1. Look & feel (offline-built, should just work)
