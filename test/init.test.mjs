@@ -6,36 +6,59 @@ import vm from 'node:vm';
 
 const info = JSON.parse(readFileSync(new URL('../src/addon/info.json', import.meta.url)));
 
-function loadAll(spy) {
+function loadAll() {
+  const captured = { handler: null, toasts: [] };
+  const fakePlayer = {
+    isPlaying: true, paused: false, volume: 0.4,
+    getCurrentTrack: () => ({ title: 'T', summary: 'A - T' }),
+    playAsync: () => Promise.resolve('p'),
+  };
   const sandbox = { console, window: {} };
-  // capture whenReady callback
-  sandbox.window.whenReady = (cb) => { spy.ready = cb; };
+  sandbox.window.whenReady = (cb) => { captured.ready = cb; };
   vm.createContext(sandbox);
-  const files = ['lib/log-buffer.js', 'lib/router.js', 'lib/pages.js', 'logger.js', 'http-controller.js', 'status-panel.js', 'init.js'];
+  const files = ['lib/log-buffer.js', 'lib/commands.js', 'logger.js', 'init.js'];
   for (const f of files) {
     if (f === 'logger.js') {
       sandbox.MamaMonkey.bindings = {
-        registerHttpHandler: () => ({ hooked: true }),
-        appendLogFile: () => true, readLogFile: () => '',
-        getSharingInfo: () => ({ host: 'h', port: 1 }),
-        addStatusMenuItem: () => true,
+        getApp: () => ({ player: fakePlayer }),
+        registerRemoteRequest: (h) => { captured.handler = h; return { ok: true }; },
+        showToast: (m) => { captured.toasts.push(m); return true; },
+        showDialog: () => true,
       };
     }
     const code = readFileSync(fileURLToPath(new URL(`../src/addon/${f}`, import.meta.url)), 'utf8');
     vm.runInContext(code, sandbox, { filename: f });
   }
-  return sandbox;
+  return { ns: sandbox.MamaMonkey, captured };
 }
 
-test('init exposes VERSION matching info.json', () => {
-  const spy = {};
-  const sandbox = loadAll(spy);
-  assert.equal(sandbox.MamaMonkey.VERSION, info.version);
+test('VERSION matches info.json', () => {
+  const { ns } = loadAll();
+  assert.equal(ns.VERSION, info.version);
 });
 
-test('init registers a whenReady boot that runs without throwing', () => {
-  const spy = {};
-  const sandbox = loadAll(spy);
-  assert.equal(typeof spy.ready, 'function');
-  assert.doesNotThrow(() => spy.ready());
+test('whenReady boot runs, registers a handler, and toasts', () => {
+  const { captured } = loadAll();
+  assert.equal(typeof captured.ready, 'function');
+  assert.doesNotThrow(() => captured.ready());
+  assert.equal(typeof captured.handler, 'function');
+  assert.ok(captured.toasts.some((m) => /MamaMonkey/.test(m)));
+});
+
+test('registered handler answers a ping', async () => {
+  const { captured } = loadAll();
+  captured.ready();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'ping' }));
+  assert.equal(out.handled, true);
+  assert.equal(out.response.ok, true);
+  assert.equal(out.response.result.pong, true);
+});
+
+test('status command reports player state', async () => {
+  const { captured } = loadAll();
+  captured.ready();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'status' }));
+  assert.equal(out.response.result.available, true);
+  assert.equal(out.response.result.volume, 0.4);
+  assert.equal(out.response.result.track.title, 'T');
 });
