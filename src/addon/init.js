@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.1.3';
+  MM.VERSION = '0.1.4';
   MM.NAME = 'MamaMonkey';
 
   function buildHandlers() {
@@ -57,6 +57,7 @@
     }
   }
 
-  var ready = (typeof window !== 'undefined' && window.whenReady) || (globalThis.window && globalThis.window.whenReady);
-  if (typeof ready === 'function') { ready(boot); } else { boot(); }
+  // Register at top level, like MM's official remoteControl sample (which calls
+  // app.listen directly in init.js without whenReady). app is available here.
+  boot();
 })();

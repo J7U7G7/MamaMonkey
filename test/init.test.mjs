@@ -6,6 +6,8 @@ import vm from 'node:vm';
 
 const info = JSON.parse(readFileSync(new URL('../src/addon/info.json', import.meta.url)));
 
+// init.js boots immediately on load (top-level, like MM's remoteControl sample),
+// so we inject MM.bindings before loading init.js and read what boot() captured.
 function loadAll() {
   const captured = { handler: null, toasts: [] };
   const fakePlayer = {
@@ -13,12 +15,11 @@ function loadAll() {
     getCurrentTrack: () => ({ title: 'T', summary: 'A - T' }),
     playAsync: () => Promise.resolve('p'),
   };
-  const sandbox = { console, window: {} };
-  sandbox.window.whenReady = (cb) => { captured.ready = cb; };
+  const sandbox = { console };
   vm.createContext(sandbox);
   const files = ['lib/log-buffer.js', 'lib/commands.js', 'logger.js', 'init.js'];
   for (const f of files) {
-    if (f === 'logger.js') {
+    if (f === 'init.js') {
       sandbox.MamaMonkey.bindings = {
         getApp: () => ({ player: fakePlayer }),
         registerRemoteRequest: (h) => { captured.handler = h; return { ok: true }; },
@@ -37,17 +38,14 @@ test('VERSION matches info.json', () => {
   assert.equal(ns.VERSION, info.version);
 });
 
-test('whenReady boot runs, registers a handler, and toasts', () => {
+test('boot runs on load: registers a handler and toasts', () => {
   const { captured } = loadAll();
-  assert.equal(typeof captured.ready, 'function');
-  assert.doesNotThrow(() => captured.ready());
   assert.equal(typeof captured.handler, 'function');
   assert.ok(captured.toasts.some((m) => /MamaMonkey/.test(m)));
 });
 
 test('registered handler answers a ping', async () => {
   const { captured } = loadAll();
-  captured.ready();
   const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'ping' }));
   assert.equal(out.handled, true);
   assert.equal(out.response.ok, true);
@@ -56,7 +54,6 @@ test('registered handler answers a ping', async () => {
 
 test('status command reports player state', async () => {
   const { captured } = loadAll();
-  captured.ready();
   const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'status' }));
   assert.equal(out.response.result.available, true);
   assert.equal(out.response.result.volume, 0.4);

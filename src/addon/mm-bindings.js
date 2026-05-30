@@ -22,7 +22,6 @@
           } catch (e) {
             try { r.responseBody = JSON.stringify({ ok: false, error: 'serialize failed' }); } catch (e2) {}
           }
-          try { if (typeof r.sendResponse === 'function') r.sendResponse(); } catch (e3) {}
         });
       } catch (e) {
         try { r.responseBody = JSON.stringify({ ok: false, error: String(e) }); } catch (e2) {}
@@ -38,7 +37,9 @@
         return true;
       }
     } catch (e) {}
-    return showDialog(msg);
+    // Don't fall back to a modal dialog here (would pop on every startup).
+    try { if (globalThis.console) globalThis.console.log('[MamaMonkey]', msg); } catch (e) {}
+    return false;
   }
 
   function showDialog(msg) {

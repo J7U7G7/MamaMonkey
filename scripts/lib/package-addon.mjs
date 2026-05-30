@@ -1,7 +1,21 @@
 import AdmZip from 'adm-zip';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const REQUIRED = ['id', 'title', 'description', 'version', 'type', 'author', 'updateURL'];
 const SEMVER = /^\d+\.\d+\.\d+$/;
+
+// MediaMonkey only auto-loads `init.js` (at startup) and `*_add.js` (appended to
+// built-in scripts). It does NOT load arbitrary helper files. So we concatenate all
+// runtime modules into a single init.js, in dependency order. Each module is a
+// self-contained IIFE attaching to globalThis.MamaMonkey, so concatenation is safe.
+const RUNTIME_MODULES = [
+  'lib/log-buffer.js',
+  'lib/commands.js',
+  'mm-bindings.js',
+  'logger.js',
+  'init.js', // must be last — it consumes the others
+];
 
 export function addonFileName(version) {
   return `mamamonkey-${version}.mmip`;
@@ -17,10 +31,20 @@ export function validateInfoJson(info) {
   }
 }
 
-export function createMmip({ srcDir, outFile }) {
+// Concatenate the runtime modules into one init.js string.
+export function bundleInitJs(srcDir) {
+  return RUNTIME_MODULES.map((rel) => {
+    const code = readFileSync(join(srcDir, rel), 'utf8');
+    return `/* ===== ${rel} ===== */\n${code}`;
+  }).join('\n;\n');
+}
+
+// Build the .mmip with exactly the files MM loads: info.json, the bundled init.js,
+// and actions_add.js — all at the archive root.
+export function packageAddon({ srcDir, outFile }) {
   const zip = new AdmZip();
-  // addLocalFolder adds the folder's CONTENTS at the archive root (no wrapper dir),
-  // which MediaMonkey requires (info.json must sit at the .mmip root).
-  zip.addLocalFolder(srcDir);
+  zip.addFile('info.json', Buffer.from(readFileSync(join(srcDir, 'info.json'))));
+  zip.addFile('init.js', Buffer.from(bundleInitJs(srcDir), 'utf8'));
+  zip.addFile('actions_add.js', Buffer.from(readFileSync(join(srcDir, 'actions_add.js'))));
   zip.writeZip(outFile);
 }
