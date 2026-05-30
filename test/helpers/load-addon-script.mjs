@@ -8,7 +8,9 @@ import vm from 'node:vm';
 export function loadAddonScript(relPathFromAddon) {
   const url = new URL(`../../src/addon/${relPathFromAddon}`, import.meta.url);
   const code = readFileSync(fileURLToPath(url), 'utf8');
-  const sandbox = { console };
+  // Expose a host-realm JSON.parse so that objects returned from VM code
+  // have the correct Object.prototype (required for assert.deepEqual in Node v26).
+  const sandbox = { console, _hostJSONParse: JSON.parse.bind(JSON) };
   vm.createContext(sandbox); // sandbox becomes the context's globalThis
   vm.runInContext(code, sandbox, { filename: relPathFromAddon });
   return sandbox.MamaMonkey;
