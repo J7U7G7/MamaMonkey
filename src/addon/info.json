@@ -2,7 +2,7 @@
   "id": "mamamonkey",
   "title": "MamaMonkey",
   "description": "iPhone remote control for MediaMonkey (Phase 0: update spine).",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "type": "general",
   "author": "J7U7G7",
   "minAppVersion": "5.0.0",

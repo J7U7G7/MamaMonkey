@@ -12,7 +12,8 @@ function loadAll() {
   const captured = { handler: null, toasts: [] };
   const fakePlayer = {
     isPlaying: true, paused: false, volume: 0.4,
-    getCurrentTrack: () => ({ title: 'T', summary: 'A - T' }),
+    trackPositionMS: 5000, trackLengthMS: 200000,
+    getCurrentTrack: () => ({ title: 'T', artist: 'Benoit & Sergio', album: 'Alb', summary: 'A - T' }),
     playAsync: () => Promise.resolve('p'),
   };
   const sandbox = { console };
@@ -58,4 +59,6 @@ test('status command reports player state', async () => {
   assert.equal(out.response.result.available, true);
   assert.equal(out.response.result.volume, 0.4);
   assert.equal(out.response.result.track.title, 'T');
+  assert.equal(out.response.result.track.artist, 'Benoit & Sergio');
+  assert.equal(out.response.result.durationMs, 200000);
 });

@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.1.4';
+  MM.VERSION = '0.2.0';
   MM.NAME = 'MamaMonkey';
 
   function buildHandlers() {
@@ -16,13 +16,15 @@
         var track = null;
         try {
           var t = p.getCurrentTrack && p.getCurrentTrack();
-          if (t) track = { title: t.title, summary: t.summary };
+          if (t) track = { title: t.title, artist: t.artist, album: t.album, summary: t.summary };
         } catch (e) {}
         return {
           available: true,
           isPlaying: !!p.isPlaying,
           paused: !!p.paused,
           volume: (typeof p.volume === 'number') ? p.volume : null,
+          positionMs: (typeof p.trackPositionMS === 'number') ? p.trackPositionMS : null,
+          durationMs: (typeof p.trackLengthMS === 'number') ? p.trackLengthMS : null,
           track: track,
         };
       },
