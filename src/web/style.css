@@ -1,5 +1,7 @@
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
+/* `.art { display:flex }` outweighs the UA [hidden] rule, so make hidden explicit. */
+[hidden] { display: none !important; }
 body { margin: 0; background: #111; color: #eee; font-family: -apple-system, system-ui, sans-serif;
   -webkit-user-select: none; user-select: none; }
 #app { max-width: 480px; margin: 0 auto; padding: 24px 20px calc(24px + env(safe-area-inset-bottom)); text-align: center; }
