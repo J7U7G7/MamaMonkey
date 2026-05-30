@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.3.1';
+  MM.VERSION = '0.3.2';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -30,6 +30,15 @@
           fr.readAsDataURL(blob);
         });
       });
+  }
+
+  // Read `path` and resolve the getArt result (data URL on success, diagnostics on failure).
+  function readAndResolve(path, via, resolve, key) {
+    readFileAsDataUrl(path).then(function (dataUrl) {
+      resolve({ available: true, key: key, dataUrl: dataUrl, via: via });
+    }).catch(function (e) {
+      resolve({ available: false, stage: 'read-fail', path: String(path), via: via, error: String(e), key: key });
+    });
   }
 
   function buildHandlers() {
@@ -118,43 +127,45 @@
         try { t = a.player.getCurrentTrack && a.player.getCurrentTrack(); } catch (e) {}
         var key = trackKeyOf(t);
         if (!t) return { available: false, stage: 'no-track', key: key };
+        var cl = t.coverList;
+        if (!cl) return { available: false, stage: 'no-coverlist', key: key };
 
-        // Resolve the cover path: prefer the synchronous getFirstCoverThumb, then
-        // cover.picturePath, then the async getThumbAsync callback. Each is best-effort.
-        function resolvePath() {
+        // The current track's coverList is usually NOT populated synchronously — load it first.
+        var loadP;
+        try {
+          if (typeof t.loadCoverListAsync === 'function') loadP = Promise.resolve(t.loadCoverListAsync());
+          else if (typeof cl.whenLoaded === 'function') loadP = Promise.resolve(cl.whenLoaded());
+          else loadP = Promise.resolve(cl);
+        } catch (e) { loadP = Promise.resolve(cl); }
+
+        var work = loadP.then(function (loaded) {
+          var list = loaded || cl;
+          var count = (list && list.count) || 0;
+          if (!count) return { available: false, stage: 'empty-coverlist', count: count, key: key };
           return new Promise(function (resolve) {
-            try {
-              if (typeof t.getFirstCoverThumb === 'function') {
-                var p = t.getFirstCoverThumb(300, 300);
-                if (p && p !== '-') { resolve({ path: p, via: 'getFirstCoverThumb' }); return; }
-              }
-            } catch (e) {}
-            try {
-              var cover = (typeof t.getFirstCover === 'function') ? t.getFirstCover() : null;
-              if (cover && cover.picturePath) { resolve({ path: cover.picturePath, via: 'picturePath' }); return; }
-              if (cover && typeof cover.getThumbAsync === 'function') {
+            function withCover(cover) {
+              if (!cover) { resolve({ available: false, stage: 'no-cover-obj', key: key }); return; }
+              try {
                 cover.getThumbAsync(300, 300, function (link) {
-                  resolve(link && link !== '-' ? { path: link, via: 'getThumbAsync' } : { path: null });
+                  if (link && link !== '-') { readAndResolve(link, 'getThumbAsync', resolve, key); return; }
+                  if (cover.picturePath) { readAndResolve(cover.picturePath, 'picturePath', resolve, key); return; }
+                  resolve({ available: false, stage: 'empty-thumb', key: key });
                 });
-                return;
+              } catch (e) {
+                if (cover.picturePath) { readAndResolve(cover.picturePath, 'picturePath', resolve, key); return; }
+                resolve({ available: false, stage: 'thumb-throw', error: String(e), key: key });
               }
-            } catch (e) {}
-            resolve({ path: null });
-          });
-        }
-
-        var work = resolvePath().then(function (r) {
-          if (!r.path) return { available: false, stage: 'no-cover', key: key };
-          return readFileAsDataUrl(r.path).then(function (dataUrl) {
-            return { available: true, key: key, dataUrl: dataUrl, via: r.via };
-          }).catch(function (e) {
-            return { available: false, stage: 'read-fail', path: String(r.path), via: r.via, error: String(e), key: key };
+            }
+            try {
+              if (list.locked) list.locked(function () { withCover(list.getValue(0)); });
+              else withCover(list.getValue(0));
+            } catch (e) { resolve({ available: false, stage: 'getValue-throw', error: String(e), key: key }); }
           });
         }).catch(function (e) {
-          return { available: false, stage: 'resolve-fail', error: String(e), key: key };
+          return { available: false, stage: 'load-fail', error: String(e), key: key };
         });
 
-        // Never let the remoteRequest hang: cap at 6s and report the path for diagnosis.
+        // Never let the remoteRequest hang: cap at 6s.
         var timeout = new Promise(function (resolve) {
           setTimeout(function () { resolve({ available: false, stage: 'timeout', key: key }); }, 6000);
         });
