@@ -69,8 +69,10 @@ export function lanUrls(port) {
   return urls;
 }
 
-// Entry point (skipped during unit tests).
-if (process.argv[1] && /server\.js$/.test(process.argv[1])) {
+// Entry point: true when run as `node server.js` AND in a `bun build --compile` exe,
+// false when imported by unit tests. (process.argv[1] is the exe path in a compiled
+// binary, so a filename check would wrongly disable the server there.)
+if (import.meta.main) {
   const { resolveConfig } = await import('./config.js');
   const { ASSETS } = await import('./assets.js');
   const config = resolveConfig({ argv: process.argv.slice(2), env: process.env });
