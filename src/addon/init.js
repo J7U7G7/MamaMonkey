@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.3.2';
+  MM.VERSION = '0.4.0';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -40,6 +40,29 @@
       resolve({ available: false, stage: 'read-fail', path: String(path), via: via, error: String(e), key: key });
     });
   }
+
+  // ---- Phase 3: token-referenced list/Tracklist cache (avoids SQL/escaping) ----
+  var _cache = {};
+  var _order = [];
+  function cachePut(token, list) {
+    if (!Object.prototype.hasOwnProperty.call(_cache, token)) {
+      _order.push(token);
+      while (_order.length > 10) { delete _cache[_order.shift()]; }
+    }
+    _cache[token] = list;
+    return token;
+  }
+  function loadedList(list) {
+    return Promise.resolve(list && list.whenLoaded ? list.whenLoaded() : list).then(function (l) { return l || list; });
+  }
+  function readItems(list, offset, limit, map) {
+    var items = [], total = (list && list.count) || 0, end = Math.min(total, offset + limit);
+    function collect() { for (var i = offset; i < end; i++) { items.push(map(list.getValue(i), i)); } }
+    if (list && list.locked) list.locked(collect); else collect();
+    return { total: total, items: items, truncated: end < total };
+  }
+  function trackItem(t, i) { return { index: i, id: t && t.id, title: t && t.title, artist: t && t.artist, album: t && t.album }; }
+  function valueAt(list, index) { var v; if (list && list.locked) list.locked(function () { v = list.getValue(index); }); else v = list.getValue(index); return v; }
 
   function buildHandlers() {
     var a = MM.bindings.getApp();
@@ -170,6 +193,117 @@
           setTimeout(function () { resolve({ available: false, stage: 'timeout', key: key }); }, 6000);
         });
         return Promise.race([work, timeout]);
+      },
+      lib: function (args) {
+        var view = (args && args.view) || 'all';
+        var q = args && args.q;
+        var offset = Math.max(0, Number(args && args.offset) || 0);
+        var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
+        var base, token, map = trackItem, isTracks = true;
+        try {
+          if (view === 'artists') { base = a.collections.getArtistList(); token = 'lib:artists'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.name || it.title), drillable: !!(it && it.getTracklist) }; }; }
+          else if (view === 'albums') { base = a.collections.getAlbumList(); token = 'lib:albums'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.title || it.name), artist: it && it.artist, drillable: !!(it && it.getTracklist) }; }; }
+          else if (view === 'genres') { base = a.collections.getGenreList(); token = 'lib:genres'; isTracks = false; map = function (it, i) { return { index: i, name: it && (it.name || it.title), drillable: !!(it && it.getTracklist) }; }; }
+          else { base = a.collections.getTracklist(); token = 'lib:all'; }
+        } catch (e) { return { error: 'list-failed', view: view, message: String(e) }; }
+        cachePut(token, base);
+        return loadedList(base).then(function (l) {
+          if (q && l.filterBySearchPhrase) { l.filterBySearchPhrase(q); token = 'search'; cachePut(token, l); return loadedList(l); }
+          return l;
+        }).then(function (l) {
+          var r = readItems(l, offset, limit, map);
+          return { token: token, kind: isTracks ? 'tracks' : view, total: r.total, items: r.items, truncated: r.truncated };
+        });
+      },
+      open: function (args) {
+        var token = args && args.token, index = Number(args && args.index) || 0;
+        var offset = Math.max(0, Number(args && args.offset) || 0);
+        var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
+        var src = _cache[token];
+        if (!src) return { error: 'unknown-token', token: token };
+        return loadedList(src).then(function (l) {
+          var node = valueAt(l, index);
+          if (!node || !node.getTracklist) return { error: 'not-drillable', token: token, index: index };
+          var tl = node.getTracklist();
+          var newTok = token + ':' + index;
+          cachePut(newTok, tl);
+          return loadedList(tl).then(function (tll) {
+            var r = readItems(tll, offset, limit, trackItem);
+            return { token: newTok, kind: 'tracks', title: node.title || node.name, total: r.total, items: r.items, truncated: r.truncated };
+          });
+        });
+      },
+      play: function (args) {
+        var token = args && args.token, mode = (args && args.mode) || 'now';
+        var index = (args && args.index != null) ? Number(args.index) : undefined;
+        var tl = _cache[token];
+        if (!tl) return Promise.resolve({ error: 'unknown-token', token: token });
+        var params = mode === 'next' ? { afterCurrent: true }
+          : mode === 'queue' ? { position: -1 }
+          : { withClear: true, startPlayback: true };
+        if (index != null && mode === 'now') params.focusedTrackIndex = index;
+        return loadedList(tl).then(function (l) { return a.player.addTracksAsync(l, params); }).then(function () {
+          return (mode === 'now') ? a.player.playAsync().then(function () { return { ok: true, mode: mode }; }) : { ok: true, mode: mode };
+        });
+      },
+      playlists: function () {
+        var root = a.playlists && a.playlists.root;
+        if (!root || !root.getChildren) return { items: [], error: 'no-root' };
+        var ch = root.getChildren();
+        return loadedList(ch).then(function (l) {
+          var r = readItems(l, 0, 500, function (p, i) { return { index: i, id: p && p.id, title: p && (p.title || p.name), isFolder: !!(p && p.childrenCount) }; });
+          return { items: r.items, total: r.total };
+        });
+      },
+      playlistTracks: function (args) {
+        var id = Number(args && args.id);
+        var offset = Math.max(0, Number(args && args.offset) || 0);
+        var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
+        return Promise.resolve(a.playlists.getByIDAsync(id)).then(function (pl) {
+          if (!pl || !pl.getTracklist) return { error: 'no-playlist', id: id };
+          var tl = pl.getTracklist(); cachePut('pl:' + id, tl);
+          return loadedList(tl).then(function (l) { var r = readItems(l, offset, limit, trackItem); return { token: 'pl:' + id, total: r.total, items: r.items, truncated: r.truncated }; });
+        });
+      },
+      playlistCreate: function (args) {
+        var name = (args && args.name) || 'New Playlist';
+        var p = a.playlists.root.newPlaylist();
+        p.name = name;
+        return Promise.resolve(p.commitAsync()).then(function () { return { ok: true, id: p.id, name: name }; });
+      },
+      playlistRename: function (args) {
+        return Promise.resolve(a.playlists.getByIDAsync(Number(args.id))).then(function (p) { p.name = args.name; return Promise.resolve(p.commitAsync()); }).then(function () { return { ok: true }; });
+      },
+      playlistDelete: function (args) {
+        return Promise.resolve(a.playlists.getByIDAsync(Number(args.id))).then(function (p) { return Promise.resolve(p.deleteAsync()); }).then(function () { return { ok: true }; });
+      },
+      playlistAdd: function (args) {
+        var tl = _cache[args && args.token];
+        if (!tl) return Promise.resolve({ error: 'unknown-token' });
+        return Promise.resolve(a.playlists.getByIDAsync(Number(args.id))).then(function (p) {
+          return loadedList(tl).then(function (l) { return p.addTracksAsync(l); });
+        }).then(function () { return { ok: true }; });
+      },
+      playlistRemove: function (args) {
+        return Promise.resolve(a.playlists.getByIDAsync(Number(args.id))).then(function (p) {
+          var tl = p.getTracklist();
+          return loadedList(tl).then(function (l) { return p.removeTrackAsync(valueAt(l, Number(args.trackIndex))); });
+        }).then(function () { return { ok: true }; });
+      },
+      playlistReorder: function (args) {
+        return Promise.resolve(a.playlists.getByIDAsync(Number(args.id))).then(function (p) {
+          var tl = p.getTracklist();
+          return loadedList(tl).then(function (l) { return p.moveTrackAsync(valueAt(l, Number(args.from)), valueAt(l, Number(args.to))); });
+        }).then(function () { return { ok: true }; });
+      },
+      introspect: function () {
+        var out = { collections: {}, playlists: {} };
+        try { out.collections.has = !!a.collections; } catch (e) {}
+        try { var al = a.collections.getArtistList(); out.collections.artist = { keys: al ? Object.keys(al).slice(0, 40) : null }; if (al && al.count !== undefined) out.collections.artist.count = al.count; } catch (e) { out.collections.artistErr = String(e); }
+        try { var alb = a.collections.getAlbumList(); out.collections.albumKeys = alb ? Object.keys(alb).slice(0, 40) : null; } catch (e) { out.collections.albumErr = String(e); }
+        try { var g = a.collections.getGenreList(); out.collections.genreKeys = g ? Object.keys(g).slice(0, 40) : null; } catch (e) { out.collections.genreErr = String(e); }
+        try { out.playlists.hasRoot = !!(a.playlists && a.playlists.root); out.playlists.rootKeys = a.playlists ? Object.keys(a.playlists).slice(0, 40) : null; } catch (e) { out.playlists.err = String(e); }
+        return out;
       },
     };
   }

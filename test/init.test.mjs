@@ -19,14 +19,29 @@ function loadAll() {
     seekMSAsync: function(ms){ this._seek = ms; return Promise.resolve(); },
     setPlaylistPosAsync: function(i){ this._jumped = i; return Promise.resolve(); },
     getTracklist: function(){ return { count: 2, getValue: function(i){ return { title: 'T'+i, artist: 'A'+i }; } }; },
+    addTracksAsync: function(l,p){ this._added={count:l&&l.count,params:p}; return Promise.resolve(); },
   };
+  function tracklist(items) {
+    return { count: items.length, whenLoaded: function(){ return Promise.resolve(this); }, locked: function(f){ f(); },
+      getValue: function(i){ return items[i]; } };
+  }
+  const fakeCollections = {
+    getTracklist: function(){ return tracklist([{id:1,title:'T1',artist:'A1',album:'Al1'},{id:2,title:'T2',artist:'A2',album:'Al2'}]); },
+    getArtistList: function(){ return tracklist([{name:'A1',getTracklist:function(){return tracklist([{id:1,title:'T1',artist:'A1'}]);}}]); },
+    getAlbumList: function(){ return tracklist([]); }, getGenreList: function(){ return tracklist([]); },
+  };
+  const _pl = { id: 7, name: 'P', getTracklist: function(){ return tracklist([{id:1,title:'T1'}]); },
+    addTracksAsync: function(){return Promise.resolve();}, commitAsync:function(){return Promise.resolve();},
+    deleteAsync:function(){return Promise.resolve();}, removeTrackAsync:function(){return Promise.resolve();}, moveTrackAsync:function(){return Promise.resolve();} };
+  const fakePlaylists = { root: { getChildren: function(){ return tracklist([{id:7,title:'P',childrenCount:0}]); }, newPlaylist: function(){ return _pl; } },
+    getByIDAsync: function(){ return Promise.resolve(_pl); } };
   const sandbox = { console };
   vm.createContext(sandbox);
   const files = ['lib/log-buffer.js', 'lib/commands.js', 'logger.js', 'init.js'];
   for (const f of files) {
     if (f === 'init.js') {
       sandbox.MamaMonkey.bindings = {
-        getApp: () => ({ player: fakePlayer }),
+        getApp: () => ({ player: fakePlayer, collections: fakeCollections, playlists: fakePlaylists }),
         registerRemoteRequest: (h) => { captured.handler = h; return { ok: true }; },
         showToast: (m) => { captured.toasts.push(m); return true; },
         showDialog: () => true,
@@ -104,4 +119,28 @@ test('status includes shuffle/repeat/queueIndex/trackKey', async () => {
   assert.equal(typeof out.response.result.shuffle, 'boolean');
   assert.equal(out.response.result.queueIndex, 2);
   assert.ok(out.response.result.trackKey.length > 0);
+});
+
+test('lib all returns paged tracks with a token', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'lib', args: { view: 'all' } }));
+  assert.equal(out.response.result.token, 'lib:all');
+  assert.equal(out.response.result.items[0].title, 'T1');
+});
+test('play now adds tracks with withClear+startPlayback', async () => {
+  const { captured } = loadAll();
+  await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'lib', args: { view: 'all' } }));
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'play', args: { token: 'lib:all', mode: 'now' } }));
+  assert.equal(out.response.result.ok, true);
+});
+test('playlists lists children', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'playlists' }));
+  assert.equal(out.response.result.items[0].id, 7);
+});
+test('playlistCreate commits and returns id', async () => {
+  const { captured } = loadAll();
+  const out = await captured.handler(JSON.stringify({ target: 'mamamonkey', command: 'playlistCreate', args: { name: 'X' } }));
+  assert.equal(out.response.result.ok, true);
+  assert.equal(out.response.result.id, 7);
 });
