@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.1.1';
+  MM.VERSION = '0.1.2';
   MM.NAME = 'MamaMonkey';
 
   function buildHandlers() {
