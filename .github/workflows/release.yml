@@ -1,0 +1,52 @@
+name: release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main (so we can commit update.json back)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build .mmip (asserts info.json version == tag)
+        run: node scripts/build.mjs --tag "${GITHUB_REF_NAME}"
+
+      - name: Create GitHub Release with the .mmip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/*.mmip --title "${GITHUB_REF_NAME}" --notes "Automated release ${GITHUB_REF_NAME}"
+
+      - name: Regenerate update.json pointing at the new asset
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/write-update-manifest.mjs --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/mamamonkey-${VERSION}.mmip"
+
+      - name: Commit update.json back to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          if git diff --cached --quiet; then
+            echo "update.json unchanged"
+          else
+            git commit -m "chore: update manifest for ${GITHUB_REF_NAME}"
+            git push origin HEAD:main
+          fi
