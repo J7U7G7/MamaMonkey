@@ -362,7 +362,7 @@
         return dispatcher.handle(body);
       });
       MM.logger.log('info', 'remoteRequest registered', reg);
-      MM.bindings.showToast('🐒 MamaMonkey ' + MM.VERSION + ' loaded');
+      MM.bindings.showToast('🦸‍♀️ MamaMonkey ' + MM.VERSION + ' loaded');
       MM.logger.log('info', 'MamaMonkey ready');
     } catch (e) {
       try { MM.logger && MM.logger.log('error', 'boot failed', { message: String(e) }); } catch (e2) {}
