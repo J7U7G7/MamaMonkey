@@ -13,11 +13,20 @@
     var s = Math.floor(ms / 1000), m = Math.floor(s / 60);
     s = s % 60; return m + ':' + (s < 10 ? '0' : '') + s;
   }
+  // Connection indicator: any cmd success → connected; any failure → "reconnexion…".
+  function setConn(ok) { var c = $('conn'); if (c) c.hidden = !!ok; }
+  // Every command fetch has a short timeout so a flaky network fails fast and retries,
+  // and updates the connection state (so the UI shows reconnecting without breaking).
   function cmd(command, args) {
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var to = ctrl ? setTimeout(function () { ctrl.abort(); }, 4000) : null;
     return fetch('/api/command', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target: 'mamamonkey', command: command, args: args || {} }),
-    }).then(function (r) { return r.json(); });
+      signal: ctrl ? ctrl.signal : undefined,
+    }).then(function (r) { return r.json(); })
+      .then(function (j) { if (to) clearTimeout(to); setConn(true); return j; })
+      .catch(function (e) { if (to) clearTimeout(to); setConn(false); throw e; });
   }
 
   function setArt(dataUrl) {
@@ -73,7 +82,14 @@
     if (queueOpen && r.trackKey !== lastQueueKey) { lastQueueKey = r.trackKey; refreshQueue(); }
     $('status').textContent = '';
   }
-  function poll() { cmd('status').then(render).catch(function () { $('status').textContent = 'offline'; }); }
+  // Resilient polling: skip if a poll is already in flight; on failure keep the last
+  // screen visible (setConn shows "reconnexion…") and just retry on the next tick.
+  var polling = false;
+  function poll() {
+    if (polling) return;
+    polling = true;
+    cmd('status').then(render).catch(function () {}).then(function () { polling = false; });
+  }
 
   $('prev').onclick = function () { cmd('prev').then(poll); };
   $('next').onclick = function () { cmd('next').then(poll); };
