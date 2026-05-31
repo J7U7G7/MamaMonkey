@@ -4,7 +4,8 @@ This is the single doc to read before resuming or extending MamaMonkey (whether 
 
 ## Current state (keep this updated)
 
-- **Addon:** `v0.5.4` · **Companion:** `companion-v0.3.4` · tests: green (`npm test`).
+- **Addon:** `v0.5.4` · **Companion:** `companion-v0.3.5` · tests: green (`npm test`).
+- The PWA is **network-resilient** (companion-v0.3.5): commands have a 4s timeout, polling skips while in-flight, the last screen stays on a dropped connection with a "Reconnexion…" pill, and it auto-recovers — so weak-Wi-Fi micro-drops are invisible. (Root cause of drops = the PC's own Wi-Fi quality; fix that with Ethernet/powerline/2.4GHz.)
 - Repo `git@github.com:J7U7G7/MamaMonkey.git`, default branch `main`. GitHub Actions auto-release on tags. `update.json` served via `raw.githubusercontent.com`.
 - Feature-complete per the original vision (now-playing, library, playlists, ratings, comfort/polish). See README "Features".
 
