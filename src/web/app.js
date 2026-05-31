@@ -158,9 +158,9 @@
         libList.appendChild(rowEl(it.title, it.artist + (it.album ? ' · ' + it.album : ''),
           function () { playSheet(res.token, it.index); }, function () { playSheet(res.token, it.index); }));
       } else {
-        libList.appendChild(rowEl(it.name, res.kind.slice(0, -1),
-          function () { cmd('open', { token: res.token, index: it.index }).then(renderLib); },
-          function () { cmd('open', { token: res.token, index: it.index }).then(function (r) { playSheet(unwrap(r).token); }); }));
+        libList.appendChild(rowEl(it.name + (it.artist ? ' · ' + it.artist : ''), res.kind.slice(0, -1),
+          function () { cmd('libTracks', { by: it.by, value: it.value }).then(renderLib); },
+          function () { cmd('libTracks', { by: it.by, value: it.value }).then(function (r) { playSheet(unwrap(r).token); }); }));
       }
     });
     libList.dataset.loaded = '1';

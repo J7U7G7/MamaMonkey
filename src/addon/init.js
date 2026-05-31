@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.4.2';
+  MM.VERSION = '0.4.3';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -218,21 +218,39 @@
           });
         }
 
-        // Browse-by → app.db.getArtistList / getAlbumList / getGenresList (note plural Genres).
-        var getter = view === 'artists' ? 'getArtistList' : view === 'albums' ? 'getAlbumList' : view === 'genres' ? 'getGenresList' : null;
-        if (!getter || !a.db || typeof a.db[getter] !== 'function') return { error: 'browse-unavailable', view: view };
-        var list;
-        try { list = a.db[getter]('', -1); }
-        catch (e) { return { error: 'browse-failed', view: view, message: String(e) }; }
-        var btoken = 'lib:' + view;
-        cachePut(btoken, list);
-        return loadedList(list).then(function (l) {
-          var r = readItems(l, offset, limit, function (it, i) {
-            return { index: i, name: it && (it.name || it.title || it.artist || it.genre), drillable: !!(it && it.getTracklist) };
+        // Browse-by → SQL GROUP BY over Songs (same proven path as 'all'/search).
+        var col = view === 'artists' ? 'Artist' : view === 'albums' ? 'Album' : view === 'genres' ? 'Genre' : null;
+        var byKey = view === 'artists' ? 'artist' : view === 'albums' ? 'album' : view === 'genres' ? 'genre' : null;
+        if (!col) return { error: 'bad-view', view: view };
+        var bsql = 'SELECT * FROM Songs WHERE ' + col + " IS NOT NULL AND " + col + " <> '' GROUP BY " + col + ' ORDER BY ' + col + ' COLLATE NOCASE';
+        var btoken = 'lib:' + view, bbase;
+        try { bbase = a.db.getTracklist(bsql, -1); }
+        catch (e) { return { error: 'browse-failed', view: view, message: String(e), sql: bsql }; }
+        cachePut(btoken, bbase);
+        return loadedList(bbase).then(function (l) {
+          var r = readItems(l, offset, limit, function (t, i) {
+            var value = view === 'artists' ? t.artist : view === 'albums' ? t.album : t.genre;
+            return { index: i, by: byKey, value: value, name: value, artist: view === 'albums' ? t.artist : undefined };
           });
-          var out = { token: btoken, kind: view, total: r.total, items: r.items, truncated: r.truncated };
-          try { var s = valueAt(l, 0); out._sampleKeys = s ? Object.keys(s).slice(0, 40) : null; } catch (e) { out._sampleErr = String(e); }
-          return out;
+          return { token: btoken, kind: view, total: r.total, items: r.items, truncated: r.truncated };
+        });
+      },
+      // Drill into a browse value (artist/album/genre) → its tracks, via SQL.
+      libTracks: function (args) {
+        var by = args && args.by, value = String((args && args.value) == null ? '' : args.value);
+        var offset = Math.max(0, Number(args && args.offset) || 0);
+        var limit = Math.max(1, Math.min(300, Number(args && args.limit) || 100));
+        var col = by === 'artist' ? 'Artist' : by === 'album' ? 'Album' : by === 'genre' ? 'Genre' : null;
+        if (!col) return { error: 'bad-by', by: by };
+        var esc = value.replace(/'/g, "''");
+        var sql = 'SELECT * FROM Songs WHERE ' + col + " = '" + esc + "' ORDER BY Album COLLATE NOCASE";
+        var token = 'by:' + by + ':' + esc, base;
+        try { base = a.db.getTracklist(sql, -1); }
+        catch (e) { return { error: 'drill-failed', message: String(e), sql: sql }; }
+        cachePut(token, base);
+        return loadedList(base).then(function (l) {
+          var r = readItems(l, offset, limit, trackItem);
+          return { token: token, kind: 'tracks', title: value, total: r.total, items: r.items, truncated: r.truncated };
         });
       },
       open: function (args) {
