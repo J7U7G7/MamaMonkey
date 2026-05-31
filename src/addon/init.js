@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.4.3';
+  MM.VERSION = '0.4.4';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -279,7 +279,7 @@
         var params = mode === 'next' ? { afterCurrent: true }
           : mode === 'queue' ? { position: -1 }
           : { withClear: true, startPlayback: true };
-        if (index != null && mode === 'now') params.focusedTrackIndex = index;
+        if (mode === 'now') params.focusedTrackIndex = (index != null ? index : 0);
         return loadedList(tl).then(function (l) { return a.player.addTracksAsync(l, params); }).then(function () {
           return (mode === 'now') ? a.player.playAsync().then(function () { return { ok: true, mode: mode }; }) : { ok: true, mode: mode };
         });

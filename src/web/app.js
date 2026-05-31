@@ -47,8 +47,8 @@
       var row = document.createElement('div');
       row.className = 'qrow' + (i === q.index ? ' cur' : '');
       row.innerHTML = '<span class="qi">' + (i + 1) + '</span><span><div class="qt"></div><div class="qa"></div></span>';
-      row.querySelector('.qt').textContent = it.title || '—';
-      row.querySelector('.qa').textContent = it.artist || '';
+      row.querySelector('.qt').textContent = dec(it.title) || '—';
+      row.querySelector('.qa').textContent = dec(it.artist);
       row.onclick = function () { cmd('jump', { index: i }).then(poll); };
       panel.appendChild(row);
     });
@@ -58,9 +58,9 @@
   function render(st) {
     if (!st || !st.ok || !st.result || !st.result.available) { $('status').textContent = 'MediaMonkey not reachable'; return; }
     var r = st.result;
-    $('title').textContent = (r.track && r.track.title) || '—';
-    $('artist').textContent = (r.track && r.track.artist) || '—';
-    $('album').textContent = (r.track && r.track.album) || '—';
+    $('title').textContent = dec(r.track && r.track.title) || '—';
+    $('artist').textContent = dec(r.track && r.track.artist) || '—';
+    $('album').textContent = dec(r.track && r.track.album) || '—';
     var playing = r.isPlaying && !r.paused;
     $('playpause').textContent = playing ? '⏸' : '▶';
     if (r.durationMs) {
@@ -115,6 +115,10 @@
   // The companion relays the addon's {ok,command,result} envelope; Phase 3 data is under .result.
   function unwrap(env) { return (env && env.result) || {}; }
 
+  // Some MM tag strings come HTML-escaped (e.g. "&amp;"); decode for display.
+  var _decEl = document.createElement('textarea');
+  function dec(s) { if (s == null) return ''; _decEl.innerHTML = String(s); return _decEl.value; }
+
   // ---------- action sheet ----------
   function sheet(options) {
     var s = $('sheet'); s.innerHTML = '';
@@ -144,7 +148,7 @@
   function rowEl(main, sub, onTap, onMore, isCur) {
     var row = document.createElement('div'); row.className = 'row' + (isCur ? ' cur' : '');
     row.innerHTML = '<div class="main"><div class="t"></div><div class="s"></div></div>';
-    row.querySelector('.t').textContent = main || '—'; row.querySelector('.s').textContent = sub || '';
+    row.querySelector('.t').textContent = dec(main) || '—'; row.querySelector('.s').textContent = dec(sub);
     row.querySelector('.main').onclick = onTap;
     if (onMore) { var m = document.createElement('div'); m.className = 'more'; m.textContent = '⋯'; m.onclick = function (e) { e.stopPropagation(); onMore(); }; row.appendChild(m); }
     return row;
