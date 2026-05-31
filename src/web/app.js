@@ -175,6 +175,20 @@
   });
   var searchT; search.oninput = function () { clearTimeout(searchT); searchT = setTimeout(function () { loadLib(libView, search.value); }, 350); };
 
+  // Play / shuffle the current result set (tracks). On a browse list, play the whole library.
+  function playCurrent(shuffle) {
+    function go(token) {
+      if (!token) return;
+      cmd('play', { token: token, mode: 'now' })
+        .then(function () { return shuffle ? cmd('setShuffle', { on: true }) : null; })
+        .then(function () { showTab('now'); poll(); });
+    }
+    if (libToken && libKind === 'tracks') go(libToken);
+    else cmd('lib', { view: 'all' }).then(function (env) { go(unwrap(env).token); });
+  }
+  $('playAll').onclick = function () { playCurrent(false); };
+  $('shuffleAll').onclick = function () { playCurrent(true); };
+
   // ---------- playlists ----------
   var plsList = $('plsList');
   function loadPlaylists() {

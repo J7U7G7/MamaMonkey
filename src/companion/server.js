@@ -313,8 +313,13 @@ async function maybeSelfUpdate(currentExePath, version) {
     // Write update bat (CRLF line endings for Windows)
     const batLines = [
       '@echo off',
-      'ping 127.0.0.1 -n 3 >nul',
-      `move /y "%~dp0${baseName}.new.exe" "%~dp0${exeName}" >nul`,
+      ':waitloop',
+      'ping 127.0.0.1 -n 2 >nul',
+      // retry the swap until the old exe is unlocked (process fully exited)
+      `move /y "%~dp0${baseName}.new.exe" "%~dp0${exeName}" >nul 2>&1`,
+      'if errorlevel 1 goto waitloop',
+      // strip Mark-of-the-Web so SmartScreen doesn't block the silent relaunch
+      `powershell -NoProfile -Command "Unblock-File -LiteralPath '%~dp0${exeName}'" >nul 2>&1`,
       `start "" "%~dp0${exeName}"`,
       'del "%~f0"',
     ];
