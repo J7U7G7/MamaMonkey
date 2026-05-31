@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.5.2';
+  MM.VERSION = '0.5.3';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -150,16 +150,21 @@
       queueMove: function (args) {
         var from = Number(args && args.from), to = Number(args && args.to);
         var p = a.player;
-        try { if (typeof p.moveTracksAsync === 'function') return Promise.resolve(p.moveTracksAsync(from, to)).then(function () { return { ok: true, via: 'moveTracksAsync' }; }); } catch (e) {}
         var tl = p.getTracklist();
         return loadedList(tl).then(function (l) {
-          var mv = valueAt(l, from), before = valueAt(l, to);
           try {
-            if (typeof p.moveTrackAsync === 'function') return Promise.resolve(p.moveTrackAsync(mv, before)).then(function () { return { ok: true, via: 'player.moveTrackAsync' }; });
-            if (typeof l.moveTrackAsync === 'function') return Promise.resolve(l.moveTrackAsync(mv, before)).then(function () { return { ok: true, via: 'tl.moveTrackAsync' }; });
-            if (typeof l.moveTrack === 'function') { l.moveTrack(mv, before); return { ok: true, via: 'tl.moveTrack' }; }
-          } catch (e) { return { error: 'move-failed', message: String(e) }; }
-          return { error: 'no-move-api' };
+            var track = valueAt(l, from);
+            var removed = false, inserted = false;
+            try { l.remove(from); removed = true; } catch (e1) { try { l.delete(from); removed = true; } catch (e2) {} }
+            try { l.insert(to, track); inserted = true; } catch (e3) {}
+            try { if (typeof p.assignUpdatedSonglist === 'function') p.assignUpdatedSonglist(l); } catch (e4) {}
+            if (typeof l.commitAsync === 'function') {
+              return Promise.resolve(l.commitAsync())
+                .then(function () { return { ok: removed && inserted, removed: removed, inserted: inserted, via: 'remove+insert+commit' }; })
+                .catch(function (e) { return { error: 'commit-failed', removed: removed, inserted: inserted, message: String(e) }; });
+            }
+            return { ok: removed && inserted, removed: removed, inserted: inserted, via: 'remove+insert' };
+          } catch (e) { return { error: 'queuemove-failed', message: String(e) }; }
         });
       },
       getArt: function () {
