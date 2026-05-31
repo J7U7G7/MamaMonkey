@@ -4,7 +4,7 @@ This is the single doc to read before resuming or extending MamaMonkey (whether 
 
 ## Current state (keep this updated)
 
-- **Addon:** `v0.5.4` · **Companion:** `companion-v0.3.5` · tests: green (`npm test`).
+- **Addon:** `v0.5.5` · **Companion:** `companion-v0.3.6` · tests: green (60).
 - The PWA is **network-resilient** (companion-v0.3.5): commands have a 4s timeout, polling skips while in-flight, the last screen stays on a dropped connection with a "Reconnexion…" pill, and it auto-recovers — so weak-Wi-Fi micro-drops are invisible. (Root cause of drops = the PC's own Wi-Fi quality; fix that with Ethernet/powerline/2.4GHz.)
 - Repo `git@github.com:J7U7G7/MamaMonkey.git`, default branch `main`. GitHub Actions auto-release on tags. `update.json` served via `raw.githubusercontent.com`.
 - Feature-complete per the original vision (now-playing, library, playlists, ratings, comfort/polish). See README "Features".
@@ -36,6 +36,17 @@ Command envelope (PWA → companion `/api/command` → addon → back):
 - **mamamonkey.local:** `bonjour-service` advertised the *service* but no hostname A record → use `multicast-dns` to answer A queries for `mamamonkey.local` with the LAN IP. QR encodes the LAN IP (guaranteed) since `.local` can be network-flaky.
 - **PWA caching:** companion serves assets with `Cache-Control: no-store` so phones never keep a stale UI after an update.
 - **iPhone safe areas:** `#app` needs `padding-top: env(safe-area-inset-top)` + bottom padding for the tab bar/home indicator; `[hidden]{display:none!important}` (a `.art{display:flex}` rule overrode the `hidden` attribute).
+
+## Security posture (after the v0.5.5 audit)
+
+Threat model = trusted home LAN, **no auth by design** (v1). Audited; hardened:
+- **SQL injection: safe** — search/`libTracks` escape `'`→`''` (SQLite literals); rating is numeric; browse columns are a fixed whitelist.
+- **Static serving: safe** — assets are a fixed in-memory map; no filesystem per request → no path traversal.
+- **getArt `fetch('file://')`: safe** — path derives from the *current track*, never request args.
+- **Companion `/api/config`: hardened** — only `mmPort`/`servePort` are network-settable and validated; `mmHost` is NOT (stays local, default `127.0.0.1`) so the relay can't be turned into an SSRF pivot. Set `mmHost` via CLI/config file only.
+- **`/api/command`: open relay by design** (LAN). Removed `introspect` (info disclosure) and the `queueMove` stub. If you ever distribute widely, consider a relayable-command allowlist + a PIN.
+- **Self-update: HTTPS from GitHub** + size + **PE-magic (`MZ`)** check before executing. No signature/hash pinning yet — **for public distribution, publish & verify a SHA-256** (or Authenticode-sign the exe). It strips Mark-of-the-Web to relaunch, so the integrity check is the only gate.
+- **Remaining design choices (not bugs):** optional PIN (config scaffolds it), and the CI commits the served `.mmip` to `main` (raw hosting is required because release URLs 302-redirect).
 
 ## Workflows
 
