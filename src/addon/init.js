@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.5.0';
+  MM.VERSION = '0.5.1';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -227,9 +227,11 @@
           cachePut(rtoken, rbase);
           return loadedList(rbase).then(function (l) {
             var r = readItems(l, offset, limit, function (t, i) {
-              var rv = t.rating;
-              var stars = (typeof rv === 'number' && rv > 0) ? Math.round(rv / 20) : 0;
-              var label = (stars > 0 ? '★★★★★'.slice(0, stars) + '☆☆☆☆☆'.slice(0, 5 - stars) : '—') + '  (' + rv + ')';
+              var rv = (typeof t.rating === 'number') ? t.rating : 0;
+              var full = Math.floor(rv / 20), half = (rv % 20) >= 10 ? 1 : 0;
+              var label = rv > 0
+                ? '★★★★★'.slice(0, full) + (half ? '½' : '') + '☆☆☆☆☆'.slice(0, 5 - full - half)
+                : '—';
               return { index: i, by: 'rating', value: rv, name: label };
             });
             return { token: rtoken, kind: 'ratings', total: r.total, items: r.items, truncated: r.truncated };
