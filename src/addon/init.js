@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.5.1';
+  MM.VERSION = '0.5.2';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -144,6 +144,23 @@
         return a.player.setPlaylistPosAsync(i)
           .then(function () { return a.player.playAsync(); })
           .then(function () { return { index: i }; });
+      },
+      // Reorder the now-playing queue: move item `from` to before item `to`. Tries the
+      // likely MM APIs; introspect's playerKeys/npKeys reveal the real one if these miss.
+      queueMove: function (args) {
+        var from = Number(args && args.from), to = Number(args && args.to);
+        var p = a.player;
+        try { if (typeof p.moveTracksAsync === 'function') return Promise.resolve(p.moveTracksAsync(from, to)).then(function () { return { ok: true, via: 'moveTracksAsync' }; }); } catch (e) {}
+        var tl = p.getTracklist();
+        return loadedList(tl).then(function (l) {
+          var mv = valueAt(l, from), before = valueAt(l, to);
+          try {
+            if (typeof p.moveTrackAsync === 'function') return Promise.resolve(p.moveTrackAsync(mv, before)).then(function () { return { ok: true, via: 'player.moveTrackAsync' }; });
+            if (typeof l.moveTrackAsync === 'function') return Promise.resolve(l.moveTrackAsync(mv, before)).then(function () { return { ok: true, via: 'tl.moveTrackAsync' }; });
+            if (typeof l.moveTrack === 'function') { l.moveTrack(mv, before); return { ok: true, via: 'tl.moveTrack' }; }
+          } catch (e) { return { error: 'move-failed', message: String(e) }; }
+          return { error: 'no-move-api' };
+        });
       },
       getArt: function () {
         var t = null;
@@ -369,6 +386,8 @@
         out.dbKeys = keys(a && a.db);
         out.collKeys = keys(a && a.collections);
         out.plKeys = keys(a && a.playlists);
+        out.playerKeys = keys(a && a.player);
+        try { var np = a.player.getTracklist(); out.npKeys = keys(np); } catch (e) { out.npErr = String(e); }
         // Confirm the documented library query path + row count.
         try {
           var tl = a.db.getTracklist('SELECT * FROM Songs', -1);
