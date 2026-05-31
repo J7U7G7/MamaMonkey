@@ -187,23 +187,32 @@ if (import.meta.main) {
   const handler = createHandler({ assets: ASSETS, forward, config, saveConfig });
 
   http.createServer(handler).listen(config.servePort, '0.0.0.0', async () => {
-    // --- mDNS ---
+    const lanIp = (lanUrls(config.servePort)[0] || '').replace(/^http:\/\//, '').split(':')[0];
+
+    // --- mDNS: answer A queries for mamamonkey.local with this PC's LAN IP ---
     try {
-      const bonjourMod = await import('bonjour-service');
-      // bonjour-service is a CJS module; the class is the default export.
-      const Bonjour = bonjourMod.Bonjour ?? bonjourMod.default;
-      new Bonjour().publish({ name: 'MamaMonkey', type: 'http', port: config.servePort, host: 'mamamonkey' });
+      const mdnsMod = await import('multicast-dns');
+      const mdns = (mdnsMod.default || mdnsMod)();
+      if (lanIp) {
+        const answer = { name: 'mamamonkey.local', type: 'A', ttl: 120, data: lanIp };
+        mdns.on('query', (q) => {
+          if ((q.questions || []).some((x) => x.name && x.name.toLowerCase() === 'mamamonkey.local' && (x.type === 'A' || x.type === 'ANY'))) {
+            try { mdns.respond({ answers: [answer] }); } catch (_) {}
+          }
+        });
+        try { mdns.respond({ answers: [answer] }); } catch (_) {} // proactive announce
+      }
     } catch (e) { console.log('mDNS off:', e.message); }
 
     // --- Banner ---
     let bannerText = banner(config);
 
-    // --- QR code ---
+    // --- QR code (encode the LAN IP — guaranteed to work; mamamonkey.local is a bonus) ---
     try {
       const QRCode = await import('qrcode');
-      const primaryUrl = `http://mamamonkey.local:${config.servePort}`;
-      const qr = await QRCode.default.toString(primaryUrl, { type: 'terminal', small: true });
-      bannerText += '\n  📷 Scanne pour ouvrir l\'app :\n' + qr;
+      const qrUrl = lanIp ? `http://${lanIp}:${config.servePort}` : `http://mamamonkey.local:${config.servePort}`;
+      const qr = await QRCode.default.toString(qrUrl, { type: 'terminal', small: true });
+      bannerText += '\n  📷 Scanne pour ouvrir l\'app (' + qrUrl + ') :\n' + qr;
     } catch (e) { console.log('QR off:', e.message); }
 
     console.log(bannerText);
