@@ -74,7 +74,7 @@ test('GET /api/config returns current config and version', async () => {
   assert.ok('version' in body);
 });
 
-test('POST /api/config merges fields and persists', async () => {
+test('POST /api/config updates mmPort but IGNORES mmHost (anti-SSRF) and persists', async () => {
   const config = makeConfig();
   let saved = null;
   const saveConfig = (data) => { saved = data; };
@@ -82,9 +82,19 @@ test('POST /api/config merges fields and persists', async () => {
   const res = mockRes();
   await h(mockReq('POST', '/api/config', { mmHost: '10.0.0.2', mmPort: 20000 }), res);
   assert.equal(res.statusCode, 200);
-  assert.equal(config.mmHost, '10.0.0.2');
+  assert.equal(config.mmHost, '127.0.0.1');   // mmHost is NOT network-settable
   assert.equal(config.mmPort, 20000);
-  assert.deepEqual(saved, { mmHost: '10.0.0.2', mmPort: 20000, servePort: 8088, autoStart: false });
+  assert.deepEqual(saved, { mmHost: '127.0.0.1', mmPort: 20000, servePort: 8088, autoStart: false });
+});
+
+test('POST /api/config rejects an invalid port', async () => {
+  const config = makeConfig();
+  const h = createHandler({ assets, forward: async () => ({}), config, saveConfig: noop });
+  const res = mockRes();
+  await h(mockReq('POST', '/api/config', { mmPort: 'abc', servePort: 99999 }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(config.mmPort, 18391);   // unchanged (invalid)
+  assert.equal(config.servePort, 8088); // unchanged (out of range)
 });
 
 test('POST /api/config with servePort returns restartNeeded', async () => {

@@ -57,13 +57,13 @@ export function createHandler({ assets, forward, config = {}, saveConfig = () =>
           return res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
         }
         let restartNeeded = false;
-        const allowed = ['mmHost', 'mmPort', 'servePort', 'autoStart'];
-        for (const key of allowed) {
-          if (patch[key] !== undefined) {
-            if (key === 'servePort' && patch[key] !== config.servePort) restartNeeded = true;
-            config[key] = patch[key];
-          }
-        }
+        // Only ports are settable over the network, and they must be valid (1..65535).
+        // mmHost is intentionally NOT network-settable: the companion always proxies to its
+        // configured host (default 127.0.0.1) — accepting an arbitrary host here would let any
+        // LAN client turn the relay into an SSRF pivot. Set mmHost via CLI/config file only.
+        const toPort = (v) => { const n = Number(v); return (Number.isInteger(n) && n > 0 && n < 65536) ? n : null; };
+        if (patch.mmPort !== undefined) { const p = toPort(patch.mmPort); if (p) config.mmPort = p; }
+        if (patch.servePort !== undefined) { const p = toPort(patch.servePort); if (p && p !== config.servePort) { config.servePort = p; restartNeeded = true; } }
         try {
           saveConfig({ mmHost: config.mmHost, mmPort: config.mmPort, servePort: config.servePort, autoStart: config.autoStart });
         } catch (e) {
@@ -193,6 +193,7 @@ if (import.meta.main) {
     try {
       const mdnsMod = await import('multicast-dns');
       const mdns = (mdnsMod.default || mdnsMod)();
+      mdns.on('error', function (e) { try { console.log('mDNS error:', e && e.message); } catch (_) {} });
       if (lanIp) {
         const answer = { name: 'mamamonkey.local', type: 'A', ttl: 120, data: lanIp };
         mdns.on('query', (q) => {
@@ -294,9 +295,14 @@ async function maybeSelfUpdate(currentExePath, version) {
 
     const buf = Buffer.from(await dlResp.arrayBuffer());
 
-    // Verify size > 40 MB
+    // Sanity-check the download before we ever execute it: plausible size + Windows PE magic "MZ".
+    // (Transport is HTTPS from GitHub. For public distribution, also verify a published SHA-256.)
     if (buf.length < 40_000_000) {
       console.log(`auto-update skipped: downloaded file too small (${buf.length} bytes)`);
+      return;
+    }
+    if (buf.length < 2 || buf[0] !== 0x4d || buf[1] !== 0x5a) {
+      console.log('auto-update skipped: download is not a Windows .exe (bad magic)');
       return;
     }
 

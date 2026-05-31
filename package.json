@@ -1,6 +1,6 @@
 {
   "name": "mamamonkey",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "type": "module",
   "description": "Web-based MediaMonkey 5 remote control for iPhone (Phase 0: the update spine).",
@@ -12,7 +12,6 @@
     "gen-icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {
-    "bonjour-service": "^1.2.1",
     "qrcode": "^1.5.4",
     "multicast-dns": "^7.2.5"
   },

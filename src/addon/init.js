@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.5.4';
+  MM.VERSION = '0.5.5';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -89,7 +89,6 @@
           track: track,
         };
       },
-      play: function () { return a.player.playAsync(); },
       pause: function () { return a.player.pauseAsync(); },
       playpause: function () { return a.player.playPauseAsync(); },
       next: function () { return a.player.nextAsync(); },
@@ -144,13 +143,6 @@
         return a.player.setPlaylistPosAsync(i)
           .then(function () { return a.player.playAsync(); })
           .then(function () { return { index: i }; });
-      },
-      // Reorder the now-playing queue: move item `from` to before item `to`. Tries the
-      // likely MM APIs; introspect's playerKeys/npKeys reveal the real one if these miss.
-      // DISABLED: mutating the live now-playing list (remove/insert/commit) froze MM's
-      // request handling. No safe MM API for queue reorder, so this is a no-op stub.
-      queueMove: function () {
-        return { ok: false, error: 'queue-reorder-not-supported' };
       },
       getArt: function () {
         var t = null;
@@ -368,23 +360,6 @@
           var tl = p.getTracklist();
           return loadedList(tl).then(function (l) { return p.moveTrackAsync(valueAt(l, Number(args.from)), valueAt(l, Number(args.to))); });
         }).then(function () { return { ok: true }; });
-      },
-      introspect: function () {
-        var out = {};
-        function keys(o) { try { return o ? Object.keys(o).slice(0, 80) : null; } catch (e) { return 'err:' + e; } }
-        out.appKeys = keys(a);
-        out.dbKeys = keys(a && a.db);
-        out.collKeys = keys(a && a.collections);
-        out.plKeys = keys(a && a.playlists);
-        out.playerKeys = keys(a && a.player);
-        try { var np = a.player.getTracklist(); out.npKeys = keys(np); } catch (e) { out.npErr = String(e); }
-        // Confirm the documented library query path + row count.
-        try {
-          var tl = a.db.getTracklist('SELECT * FROM Songs', -1);
-          return Promise.resolve(tl && tl.whenLoaded ? tl.whenLoaded() : tl)
-            .then(function (l) { out.dbTracklistCount = (l && l.count) || 0; return out; })
-            .catch(function (e) { out.dbTracklistErr = String(e); return out; });
-        } catch (e) { out.dbTracklistThrow = String(e); return out; }
       },
     };
   }

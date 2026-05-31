@@ -279,14 +279,12 @@
     $('setStatus').textContent = '';
     fetch('/api/config').then(function (r) { return r.json(); }).then(function (c) {
       $('setMmPort').value = c.mmPort != null ? c.mmPort : '';
-      $('setMmHost').value = c.mmHost != null ? c.mmHost : '';
       $('setServePort').value = c.servePort != null ? c.servePort : '';
       $('setInfo').textContent = 'Companion ' + (c.version || '') + ' · ouvre http://mamamonkey.local:' + c.servePort;
     }).catch(function () { $('setStatus').textContent = 'Companion injoignable'; });
   }
   $('setSave').onclick = function () {
     var patch = {
-      mmHost: $('setMmHost').value.trim(),
       mmPort: Number($('setMmPort').value) || undefined,
       servePort: Number($('setServePort').value) || undefined,
     };
