@@ -56,3 +56,54 @@ test('unknown path -> 404', async () => {
   await h(mockReq('GET', '/nope'), res);
   assert.equal(res.statusCode, 404);
 });
+
+// helper: create a shared mutable config for tests
+function makeConfig(overrides = {}) {
+  return Object.assign({ servePort: 8088, mmHost: '127.0.0.1', mmPort: 18391, autoStart: false }, overrides);
+}
+function noop() {}
+
+test('GET /api/config returns current config and version', async () => {
+  const config = makeConfig();
+  const h = createHandler({ assets, forward: async () => ({}), config, saveConfig: noop });
+  const res = mockRes();
+  await h(mockReq('GET', '/api/config'), res);
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.servePort, 8088);
+  assert.ok('version' in body);
+});
+
+test('POST /api/config merges fields and persists', async () => {
+  const config = makeConfig();
+  let saved = null;
+  const saveConfig = (data) => { saved = data; };
+  const h = createHandler({ assets, forward: async () => ({}), config, saveConfig });
+  const res = mockRes();
+  await h(mockReq('POST', '/api/config', { mmHost: '10.0.0.2', mmPort: 20000 }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(config.mmHost, '10.0.0.2');
+  assert.equal(config.mmPort, 20000);
+  assert.deepEqual(saved, { mmHost: '10.0.0.2', mmPort: 20000, servePort: 8088, autoStart: false });
+});
+
+test('POST /api/config with servePort returns restartNeeded', async () => {
+  const config = makeConfig();
+  const h = createHandler({ assets, forward: async () => ({}), config, saveConfig: noop });
+  const res = mockRes();
+  await h(mockReq('POST', '/api/config', { servePort: 9999 }), res);
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.restartNeeded, true);
+  assert.equal(config.servePort, 9999);
+});
+
+test('POST /api/config bad JSON -> 400', async () => {
+  const config = makeConfig();
+  const h = createHandler({ assets, forward: async () => ({}), config, saveConfig: noop });
+  const res = mockRes();
+  const req = { method: 'POST', url: '/api/config', _chunks: [Buffer.from('{bad json')],
+    on(ev, cb) { if (ev === 'data') this._chunks.forEach(c => cb(c)); if (ev === 'end') cb(); return this; } };
+  await h(req, res);
+  assert.equal(res.statusCode, 400);
+});

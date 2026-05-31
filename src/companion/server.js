@@ -9,10 +9,13 @@ function readBody(req) {
   });
 }
 
-// forward(bodyObj) -> Promise<{status, text}>  (real impl posts to the media server)
-export function makeForward(config) {
+/**
+ * makeForward(configRef) — configRef is the live mutable config object.
+ * Each call reads mmHost/mmPort at invocation time so live config changes apply immediately.
+ */
+export function makeForward(configRef) {
   return async function forward(bodyObj) {
-    const r = await fetch(`http://${config.mmHost}:${config.mmPort}/`, {
+    const r = await fetch(`http://${configRef.mmHost}:${configRef.mmPort}/`, {
       method: 'POST',
       headers: { 'MMCustomRequest': 'true', 'Content-Type': 'application/json' },
       body: JSON.stringify(bodyObj),
@@ -21,11 +24,57 @@ export function makeForward(config) {
   };
 }
 
-export function createHandler({ assets, forward }) {
+/**
+ * createHandler({ assets, forward, config, saveConfig })
+ * config     — mutable config object (mutated live on POST /api/config); defaults to {}
+ * saveConfig — fn(data) that persists config to disk (optional, defaults to noop)
+ */
+export function createHandler({ assets, forward, config = {}, saveConfig = () => {} }) {
   return async function handler(req, res) {
     try {
-      const path = (req.url || '/').split('?')[0];
-      if (req.method === 'POST' && path === '/api/command') {
+      const urlPath = (req.url || '/').split('?')[0];
+
+      // --- GET /api/config ---
+      if (req.method === 'GET' && urlPath === '/api/config') {
+        let version = 'dev';
+        try { ({ COMPANION_VERSION: version } = await import('./version.js')); } catch (_) {}
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          servePort: config.servePort,
+          mmHost: config.mmHost,
+          mmPort: config.mmPort,
+          autoStart: config.autoStart,
+          version,
+        }));
+      }
+
+      // --- POST /api/config ---
+      if (req.method === 'POST' && urlPath === '/api/config') {
+        const raw = await readBody(req);
+        let patch;
+        try { patch = JSON.parse(raw); } catch (_) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
+        }
+        let restartNeeded = false;
+        const allowed = ['mmHost', 'mmPort', 'servePort', 'autoStart'];
+        for (const key of allowed) {
+          if (patch[key] !== undefined) {
+            if (key === 'servePort' && patch[key] !== config.servePort) restartNeeded = true;
+            config[key] = patch[key];
+          }
+        }
+        try {
+          saveConfig({ mmHost: config.mmHost, mmPort: config.mmPort, servePort: config.servePort, autoStart: config.autoStart });
+        } catch (e) {
+          console.log('config persist failed:', e.message);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ ok: true, restartNeeded }));
+      }
+
+      // --- POST /api/command ---
+      if (req.method === 'POST' && urlPath === '/api/command') {
         const raw = await readBody(req);
         let bodyObj;
         try { bodyObj = JSON.parse(raw); } catch (e) {
@@ -41,8 +90,10 @@ export function createHandler({ assets, forward }) {
           return res.end(JSON.stringify({ ok: false, error: 'companion->MM failed: ' + String(e && e.message || e) }));
         }
       }
+
+      // --- Static assets ---
       if (req.method === 'GET') {
-        const key = path === '/' ? '/index.html' : path;
+        const key = urlPath === '/' ? '/index.html' : urlPath;
         const asset = assets[key];
         if (asset) {
           // no-store so phones never serve a stale PWA after an update.
@@ -50,6 +101,7 @@ export function createHandler({ assets, forward }) {
           return res.end(Buffer.from(asset.base64, 'base64'));
         }
       }
+
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not found');
     } catch (e) {
@@ -75,10 +127,11 @@ export function banner(config) {
   const P = '\x1b[38;5;205m', G = '\x1b[1m\x1b[38;5;222m', B = '\x1b[1m', D = '\x1b[2m', R = '\x1b[0m';
   let urls = lanUrls(config.servePort);
   if (!urls.length) urls = [`http://localhost:${config.servePort}`];
+  const mdnsUrl = `http://mamamonkey.local:${config.servePort}`;
   const L = [];
   L.push('');
   L.push(P + '            ,d88b.  .d88b,' + R);
-  L.push(P + '            88888888888888      ' + G + 'Bonne fête, SuperMama  !' + R);
+  L.push(P + '            88888888888888      ' + G + 'Bonne fête, SuperMama  !' + R);
   L.push(P + "            `Y888888888Y'       " + R + '🦸‍♀️  ❦  💕');
   L.push(P + "              `Y88888Y'" + R);
   L.push(P + "                `Y8Y'" + R);
@@ -86,7 +139,8 @@ export function banner(config) {
   L.push('');
   L.push('  ' + B + '🎵 MamaMonkey companion' + R + D + ' — en ligne' + R);
   L.push('  ' + P + '═════════════════════════════════════════' + R);
-  urls.forEach((u) => L.push('     ' + '📱 ' + D + 'Ouvre sur l’iPhone :' + R + '  ' + B + u + R));
+  L.push('     ' + '📱 ' + D + 'Ouvre sur l’iPhone :' + R + '  ' + B + mdnsUrl + R + D + ' (ou via IP ci-dessous)' + R);
+  urls.forEach((u) => L.push('     ' + '   ' + D + u + R));
   L.push('     ' + '🎧 ' + D + 'MediaMonkey :' + R + '        ' + config.mmHost + ':' + config.mmPort);
   L.push('  ' + P + '═════════════════════════════════════════' + R);
   L.push('  ' + D + 'Laisse cette fenêtre ouverte tant que tu utilises l’app.' + R);
@@ -98,11 +152,167 @@ export function banner(config) {
 // false when imported by unit tests. (process.argv[1] is the exe path in a compiled
 // binary, so a filename check would wrongly disable the server there.)
 if (import.meta.main) {
-  const { resolveConfig } = await import('./config.js');
+  const { resolveConfig, configFilePath, saveConfigFile } = await import('./config.js');
+  const { COMPANION_VERSION } = await import('./version.js');
   const { ASSETS } = await import('./assets.js');
-  const config = resolveConfig({ argv: process.argv.slice(2), env: process.env });
-  const handler = createHandler({ assets: ASSETS, forward: makeForward(config) });
-  http.createServer(handler).listen(config.servePort, '0.0.0.0', () => {
-    console.log(banner(config));
+
+  // --- CLI flags: --install-startup / --uninstall-startup ---
+  const argv = process.argv.slice(2);
+  if (argv.includes('--install-startup') || argv.includes('--uninstall-startup')) {
+    try {
+      const appdata = process.env.APPDATA;
+      if (!appdata) throw new Error('APPDATA not set (Windows only)');
+      const startupDir = `${appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\Startup`;
+      const batPath = `${startupDir}\\MamaMonkey.bat`;
+      if (argv.includes('--install-startup')) {
+        const exePath = process.execPath;
+        const batContent = `@echo off\nstart "" "${exePath}"\n`;
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync(batPath, batContent, 'utf8');
+        console.log(`Auto-start installed: ${batPath}`);
+      } else {
+        const { unlinkSync } = await import('node:fs');
+        try { unlinkSync(batPath); console.log('Auto-start removed.'); } catch (_e) { console.log('Not installed (nothing to remove).'); }
+      }
+    } catch (e) {
+      console.log('startup flag error:', e.message);
+    }
+    process.exit(0);
+  }
+
+  const configPath = configFilePath();
+  const config = resolveConfig({ argv, env: process.env });
+  const saveConfig = (data) => saveConfigFile(configPath, data);
+  const forward = makeForward(config);
+  const handler = createHandler({ assets: ASSETS, forward, config, saveConfig });
+
+  http.createServer(handler).listen(config.servePort, '0.0.0.0', async () => {
+    // --- mDNS ---
+    try {
+      const { Bonjour } = await import('bonjour-service');
+      new Bonjour().publish({ name: 'MamaMonkey', type: 'http', port: config.servePort, host: 'mamamonkey' });
+    } catch (e) { console.log('mDNS off:', e.message); }
+
+    // --- Banner ---
+    let bannerText = banner(config);
+
+    // --- QR code ---
+    try {
+      const QRCode = await import('qrcode');
+      const primaryUrl = `http://mamamonkey.local:${config.servePort}`;
+      const qr = await QRCode.default.toString(primaryUrl, { type: 'terminal', small: true });
+      bannerText += '\n  📷 Scanne pour ouvrir l\'app :\n' + qr;
+    } catch (e) { console.log('QR off:', e.message); }
+
+    console.log(bannerText);
+
+    // --- Auto-start hint (Windows only) ---
+    try {
+      const appdata = process.env.APPDATA;
+      if (appdata) {
+        const batPath = `${appdata}\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\MamaMonkey.bat`;
+        const { existsSync } = await import('node:fs');
+        if (!existsSync(batPath)) {
+          console.log('(astuce: lance avec --install-startup pour démarrer avec Windows)');
+        }
+      }
+    } catch (_) {}
+
+    // --- Self-update (Windows exe only; skip when version === 'dev') ---
+    if (COMPANION_VERSION !== 'dev') {
+      maybeSelfUpdate(process.execPath, COMPANION_VERSION).catch(() => {});
+    }
   });
+}
+
+/** Compare two semver strings "X.Y.Z". Returns true if b > a. */
+function isNewer(a, b) {
+  try {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if (pb[i] > pa[i]) return true;
+      if (pb[i] < pa[i]) return false;
+    }
+    return false;
+  } catch (_) { return false; }
+}
+
+async function maybeSelfUpdate(currentExePath, version) {
+  try {
+    const path = await import('node:path');
+    const fs = await import('node:fs');
+    const cp = await import('node:child_process');
+    const dir = path.default.dirname(currentExePath);
+    const exeName = path.default.basename(currentExePath);
+
+    // Fetch releases list from GitHub
+    const resp = await fetch('https://api.github.com/repos/J7U7G7/MamaMonkey/releases', {
+      headers: { 'User-Agent': 'MamaMonkeyCompanion/' + version },
+    });
+    if (!resp.ok) { console.log('auto-update skipped: GitHub API', resp.status); return; }
+    const releases = await resp.json();
+
+    // Find the newest companion-vX.Y.Z tag
+    let newestRelease = null, newestSemver = null;
+    for (const rel of releases) {
+      const tag = rel.tag_name || '';
+      const m = tag.match(/^companion-v(\d+\.\d+\.\d+)$/);
+      if (!m) continue;
+      if (!newestSemver || isNewer(newestSemver, m[1])) {
+        newestSemver = m[1];
+        newestRelease = rel;
+      }
+    }
+    if (!newestRelease) { console.log('auto-update skipped: no companion release found'); return; }
+
+    // Compare to current version (strip prefix if present)
+    const currentSemver = version.replace(/^companion-v/, '');
+    if (!isNewer(currentSemver, newestSemver)) {
+      console.log('auto-update: already up to date (' + version + ')');
+      return;
+    }
+
+    // Find the exe asset
+    const asset = (newestRelease.assets || []).find((a) => a.name === 'MamaMonkeyCompanion.exe');
+    if (!asset) { console.log('auto-update skipped: exe asset not found in release'); return; }
+
+    console.log(`auto-update: downloading ${asset.name} from ${newestRelease.tag_name}...`);
+    const dlResp = await fetch(asset.browser_download_url);
+    if (!dlResp.ok) { console.log('auto-update skipped: download failed', dlResp.status); return; }
+
+    const buf = Buffer.from(await dlResp.arrayBuffer());
+
+    // Verify size > 40 MB
+    if (buf.length < 40_000_000) {
+      console.log(`auto-update skipped: downloaded file too small (${buf.length} bytes)`);
+      return;
+    }
+
+    const baseName = exeName.replace(/\.exe$/i, '');
+    const newExePath = path.default.join(dir, baseName + '.new.exe');
+    const bakExePath = path.default.join(dir, baseName + '.bak.exe');
+    const batPath = path.default.join(dir, 'mm-update.bat');
+
+    fs.default.writeFileSync(newExePath, buf);
+
+    // Back up current exe
+    fs.default.copyFileSync(currentExePath, bakExePath);
+
+    // Write update bat (CRLF line endings for Windows)
+    const batLines = [
+      '@echo off',
+      'ping 127.0.0.1 -n 3 >nul',
+      `move /y "%~dp0${baseName}.new.exe" "%~dp0${exeName}" >nul`,
+      `start "" "%~dp0${exeName}"`,
+      'del "%~f0"',
+    ];
+    fs.default.writeFileSync(batPath, batLines.join('\r\n') + '\r\n', 'utf8');
+
+    console.log('auto-update: launching updater bat and exiting...');
+    cp.default.spawn('cmd', ['/c', batPath], { detached: true, stdio: 'ignore' }).unref();
+    process.exit(0);
+  } catch (e) {
+    console.log('auto-update skipped:', e.message);
+  }
 }
