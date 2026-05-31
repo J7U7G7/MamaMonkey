@@ -70,6 +70,30 @@ export function lanUrls(port) {
   return urls;
 }
 
+// A little console art for SuperMama 💕 (returned as a string so it's testable).
+export function banner(config) {
+  const P = '\x1b[38;5;205m', G = '\x1b[1m\x1b[38;5;222m', B = '\x1b[1m', D = '\x1b[2m', R = '\x1b[0m';
+  let urls = lanUrls(config.servePort);
+  if (!urls.length) urls = [`http://localhost:${config.servePort}`];
+  const L = [];
+  L.push('');
+  L.push(P + '            ,d88b.  .d88b,' + R);
+  L.push(P + '            88888888888888      ' + G + 'Bonne fête, SuperMama  !' + R);
+  L.push(P + "            `Y888888888Y'       " + R + '🦸‍♀️  ❦  💕');
+  L.push(P + "              `Y88888Y'" + R);
+  L.push(P + "                `Y8Y'" + R);
+  L.push(P + "                  `'" + R);
+  L.push('');
+  L.push('  ' + B + '🎵 MamaMonkey companion' + R + D + ' — en ligne' + R);
+  L.push('  ' + P + '═════════════════════════════════════════' + R);
+  urls.forEach((u) => L.push('     ' + '📱 ' + D + 'Ouvre sur l’iPhone :' + R + '  ' + B + u + R));
+  L.push('     ' + '🎧 ' + D + 'MediaMonkey :' + R + '        ' + config.mmHost + ':' + config.mmPort);
+  L.push('  ' + P + '═════════════════════════════════════════' + R);
+  L.push('  ' + D + 'Laisse cette fenêtre ouverte tant que tu utilises l’app.' + R);
+  L.push('');
+  return L.join('\n');
+}
+
 // Entry point: true when run as `node server.js` AND in a `bun build --compile` exe,
 // false when imported by unit tests. (process.argv[1] is the exe path in a compiled
 // binary, so a filename check would wrongly disable the server there.)
@@ -79,9 +103,6 @@ if (import.meta.main) {
   const config = resolveConfig({ argv: process.argv.slice(2), env: process.env });
   const handler = createHandler({ assets: ASSETS, forward: makeForward(config) });
   http.createServer(handler).listen(config.servePort, '0.0.0.0', () => {
-    console.log(`🐒 MamaMonkey companion on port ${config.servePort} -> MM ${config.mmHost}:${config.mmPort}`);
-    const urls = lanUrls(config.servePort);
-    console.log('Open on your iPhone:');
-    (urls.length ? urls : [`http://localhost:${config.servePort}`]).forEach((u) => console.log('  ' + u));
+    console.log(banner(config));
   });
 }

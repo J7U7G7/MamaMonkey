@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler } from '../src/companion/server.js';
+import { createHandler, banner } from '../src/companion/server.js';
+
+test('banner includes the SuperMama message and the serve URL', () => {
+  const b = banner({ servePort: 8088, mmHost: '127.0.0.1', mmPort: 18391 });
+  assert.match(b, /SuperMama/);
+  assert.match(b, /8088/);
+  assert.match(b, /18391/);
+});
 
 const assets = { '/index.html': { contentType: 'text/html; charset=utf-8', base64: Buffer.from('<h1>MM</h1>').toString('base64') } };
 
