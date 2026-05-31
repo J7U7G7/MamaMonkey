@@ -3,7 +3,7 @@
   var MM = (globalThis.MamaMonkey = globalThis.MamaMonkey || {});
 
   // Keep in sync with src/addon/info.json (enforced by test/init.test.mjs).
-  MM.VERSION = '0.5.3';
+  MM.VERSION = '0.5.4';
   MM.NAME = 'MamaMonkey';
 
   function trackKeyOf(t) {
@@ -147,25 +147,10 @@
       },
       // Reorder the now-playing queue: move item `from` to before item `to`. Tries the
       // likely MM APIs; introspect's playerKeys/npKeys reveal the real one if these miss.
-      queueMove: function (args) {
-        var from = Number(args && args.from), to = Number(args && args.to);
-        var p = a.player;
-        var tl = p.getTracklist();
-        return loadedList(tl).then(function (l) {
-          try {
-            var track = valueAt(l, from);
-            var removed = false, inserted = false;
-            try { l.remove(from); removed = true; } catch (e1) { try { l.delete(from); removed = true; } catch (e2) {} }
-            try { l.insert(to, track); inserted = true; } catch (e3) {}
-            try { if (typeof p.assignUpdatedSonglist === 'function') p.assignUpdatedSonglist(l); } catch (e4) {}
-            if (typeof l.commitAsync === 'function') {
-              return Promise.resolve(l.commitAsync())
-                .then(function () { return { ok: removed && inserted, removed: removed, inserted: inserted, via: 'remove+insert+commit' }; })
-                .catch(function (e) { return { error: 'commit-failed', removed: removed, inserted: inserted, message: String(e) }; });
-            }
-            return { ok: removed && inserted, removed: removed, inserted: inserted, via: 'remove+insert' };
-          } catch (e) { return { error: 'queuemove-failed', message: String(e) }; }
-        });
+      // DISABLED: mutating the live now-playing list (remove/insert/commit) froze MM's
+      // request handling. No safe MM API for queue reorder, so this is a no-op stub.
+      queueMove: function () {
+        return { ok: false, error: 'queue-reorder-not-supported' };
       },
       getArt: function () {
         var t = null;
