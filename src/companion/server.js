@@ -318,9 +318,8 @@ async function maybeSelfUpdate(currentExePath, version) {
       // retry the swap until the old exe is unlocked (process fully exited)
       `move /y "%~dp0${baseName}.new.exe" "%~dp0${exeName}" >nul 2>&1`,
       'if errorlevel 1 goto waitloop',
-      // strip Mark-of-the-Web so SmartScreen doesn't block the silent relaunch
-      `powershell -NoProfile -Command "Unblock-File -LiteralPath '%~dp0${exeName}'" >nul 2>&1`,
-      `start "" "%~dp0${exeName}"`,
+      // Unblock (strip Mark-of-the-Web) AND relaunch via Start-Process (more reliable than `start`).
+      `powershell -NoProfile -ExecutionPolicy Bypass -Command "Unblock-File -LiteralPath '%~dp0${exeName}'; Start-Process -FilePath '%~dp0${exeName}' -WorkingDirectory '%~dp0'" >nul 2>&1`,
       'del "%~f0"',
     ];
     fs.default.writeFileSync(batPath, batLines.join('\r\n') + '\r\n', 'utf8');
