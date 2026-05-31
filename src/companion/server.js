@@ -189,7 +189,9 @@ if (import.meta.main) {
   http.createServer(handler).listen(config.servePort, '0.0.0.0', async () => {
     // --- mDNS ---
     try {
-      const { Bonjour } = await import('bonjour-service');
+      const bonjourMod = await import('bonjour-service');
+      // bonjour-service is a CJS module; the class is the default export.
+      const Bonjour = bonjourMod.Bonjour ?? bonjourMod.default;
       new Bonjour().publish({ name: 'MamaMonkey', type: 'http', port: config.servePort, host: 'mamamonkey' });
     } catch (e) { console.log('mDNS off:', e.message); }
 
