@@ -58,11 +58,24 @@
       <div class="plsbar"><button id="newPls" class="seg">＋ New playlist</button></div>
       <div id="plsList" class="list"></div>
     </section>
+
+    <section id="view-set" class="view" hidden>
+      <h1>⚙️ Réglages</h1>
+      <div class="settings">
+        <label>Port MediaMonkey<input id="setMmPort" class="search" type="number" inputmode="numeric"></label>
+        <label>Hôte MediaMonkey<input id="setMmHost" class="search" type="text"></label>
+        <label>Port du companion <span class="hint">(redémarrage requis)</span><input id="setServePort" class="search" type="number" inputmode="numeric"></label>
+        <button id="setSave" class="seg on">💾 Enregistrer</button>
+        <div id="setStatus" class="status"></div>
+        <div id="setInfo" class="status"></div>
+      </div>
+    </section>
   </main>
   <nav id="tabs">
     <button class="tab on" data-tab="now">▶<span>Now</span></button>
     <button class="tab" data-tab="lib">🎵<span>Library</span></button>
     <button class="tab" data-tab="pls">☰<span>Playlists</span></button>
+    <button class="tab" data-tab="set">⚙️<span>Réglages</span></button>
   </nav>
   <div id="sheet" class="sheet" hidden></div>
   <script src="/app.js"></script>

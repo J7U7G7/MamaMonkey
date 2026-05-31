@@ -55,3 +55,7 @@ img.art { object-fit: cover; }
 .sheet .card { background: #241620; width: 100%; border-radius: 16px 16px 0 0; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); }
 .sheet button { display: block; width: 100%; background: none; border: none; color: #f6e9f0; font-size: 17px; padding: 16px; text-align: center; border-bottom: 1px solid #3a2330; }
 .sheet button.cancel { color: #f88; }
+.settings { text-align: left; max-width: 360px; margin: 0 auto; }
+.settings label { display: block; margin: 14px 0 2px; font-size: 14px; color: #d8b9c8; }
+.settings .hint { color: #b08aa0; font-size: 12px; }
+#setSave { width: 100%; margin-top: 16px; }
