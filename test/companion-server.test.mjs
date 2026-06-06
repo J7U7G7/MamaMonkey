@@ -1,6 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler, banner } from '../src/companion/server.js';
+import { createHandler, banner, makeForward, rankIp } from '../src/companion/server.js';
+
+test('rankIp prefers real 192.168 LAN over a virtual 172.x (WSL) adapter', () => {
+  assert.ok(rankIp('Ethernet', '192.168.1.54') < rankIp('vEthernet (WSL)', '172.21.112.1'));
+  assert.ok(rankIp('Wi-Fi', '192.168.1.54') < rankIp('Wi-Fi', '169.254.1.2'));
+});
+
+test('forward falls back to a LAN IP when the configured host refuses', async () => {
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(url);
+    if (url.indexOf('127.0.0.1') >= 0) throw new Error('connection refused');
+    return { status: 200, text: async () => '{"ok":true}' };
+  };
+  try {
+    const fwd = makeForward({ mmHost: '127.0.0.1', mmPort: 18391 }, () => ['192.168.1.54']);
+    const out = await fwd({ target: 'mamamonkey', command: 'ping' });
+    assert.equal(out.status, 200);
+    assert.ok(seen.some((u) => u.indexOf('192.168.1.54:18391') >= 0), 'tried the LAN IP');
+  } finally { globalThis.fetch = realFetch; }
+});
 
 test('banner includes the SuperMama message and the serve URL', () => {
   const b = banner({ servePort: 8088, mmHost: '127.0.0.1', mmPort: 18391 });

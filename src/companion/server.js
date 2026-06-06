@@ -11,16 +11,39 @@ function readBody(req) {
 
 /**
  * makeForward(configRef) — configRef is the live mutable config object.
- * Each call reads mmHost/mmPort at invocation time so live config changes apply immediately.
+ * Proxies to MediaMonkey's media-sharing server. MM usually listens on 127.0.0.1, but on some
+ * PCs (esp. with WSL/Hyper-V virtual adapters) it binds to the LAN IP instead — so we try the
+ * configured host first, then the detected LAN IPs, and remember the one that works.
+ * `lanProvider` is injectable for tests.
  */
-export function makeForward(configRef) {
+export function makeForward(configRef, lanProvider) {
+  const getLan = lanProvider || (() => lanUrls(0).map((u) => u.slice('http://'.length).replace(/:0$/, '')));
+  let goodHost = null;
+  async function tryHost(host, bodyObj) {
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const to = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
+    try {
+      const r = await fetch(`http://${host}:${configRef.mmPort}/`, {
+        method: 'POST',
+        headers: { 'MMCustomRequest': 'true', 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyObj),
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      return { status: r.status, text: await r.text() };
+    } finally { if (to) clearTimeout(to); }
+  }
   return async function forward(bodyObj) {
-    const r = await fetch(`http://${configRef.mmHost}:${configRef.mmPort}/`, {
-      method: 'POST',
-      headers: { 'MMCustomRequest': 'true', 'Content-Type': 'application/json' },
-      body: JSON.stringify(bodyObj),
-    });
-    return { status: r.status, text: await r.text() };
+    const candidates = [];
+    if (goodHost) candidates.push(goodHost);
+    const base = configRef.mmHost || '127.0.0.1';
+    if (candidates.indexOf(base) < 0) candidates.push(base);
+    try { getLan().forEach((ip) => { if (ip && candidates.indexOf(ip) < 0) candidates.push(ip); }); } catch (_) {}
+    let lastErr;
+    for (const host of candidates) {
+      try { const out = await tryHost(host, bodyObj); goodHost = host; return out; }
+      catch (e) { lastErr = e; if (goodHost === host) goodHost = null; }
+    }
+    throw lastErr || new Error('MediaMonkey unreachable on any host');
   };
 }
 
@@ -111,15 +134,30 @@ export function createHandler({ assets, forward, config = {}, saveConfig = () =>
   };
 }
 
+// Real LAN IPs first; virtual adapters (WSL/Hyper-V/Docker/VPN) and link-local last —
+// so the QR code, mamamonkey.local, and the MM-host fallback pick a phone-reachable address.
+export function rankIp(name, ip) {
+  if (/^169\.254\./.test(ip)) return 90;                                   // link-local (unusable)
+  let s = 0;
+  if (/(vethernet|wsl|hyper-v|virtual|vmware|virtualbox|vbox|docker|tailscale|zerotier|utun|tun|tap)/i.test(name)) s += 40;
+  if (/^192\.168\./.test(ip)) s += 0;
+  else if (/^10\./.test(ip)) s += 1;
+  else if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) s += 5;                  // private but often virtual (WSL/Docker default)
+  else s += 3;
+  return s;
+}
 export function lanUrls(port) {
-  const urls = [];
+  const found = [];
   const ifaces = networkInterfaces();
   for (const name of Object.keys(ifaces)) {
     for (const ni of ifaces[name] || []) {
-      if (ni.family === 'IPv4' && !ni.internal) urls.push(`http://${ni.address}:${port}`);
+      if (ni.family === 'IPv4' && !ni.internal && !/^169\.254\./.test(ni.address)) {
+        found.push({ ip: ni.address, score: rankIp(name, ni.address) });
+      }
     }
   }
-  return urls;
+  found.sort((a, b) => a.score - b.score);
+  return found.map((f) => `http://${f.ip}:${port}`);
 }
 
 // A little console art for SuperMama 💕 (returned as a string so it's testable).
