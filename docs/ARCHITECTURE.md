@@ -4,7 +4,8 @@ This is the single doc to read before resuming or extending MamaMonkey (whether 
 
 ## Current state (keep this updated)
 
-- **Addon:** `v0.5.5` · **Companion:** `companion-v0.3.6` · tests: green (60).
+- **Addon:** `v0.5.5` · **Companion:** `companion-v0.3.8` · tests: green (64).
+- **MM connection is now zero-config:** the companion pings the configured host/port (+ LAN IPs); if none answer it **auto-discovers MM's DLNA server via UPnP/SSDP**, verifies it with the addon `ping`, and persists the host:port. MM's media-sharing **port varies per PC** (e.g. 18391 at one house, 16567 at another) and it can bind to a virtual-adapter IP (WSL/Hyper-V) — discovery handles both. Discovery is **fallback-only**: if the configured port already works, it never runs (mom's `127.0.0.1:18391` setup is untouched — unit-tested).
 - The PWA is **network-resilient** (companion-v0.3.5): commands have a 4s timeout, polling skips while in-flight, the last screen stays on a dropped connection with a "Reconnexion…" pill, and it auto-recovers — so weak-Wi-Fi micro-drops are invisible. (Root cause of drops = the PC's own Wi-Fi quality; fix that with Ethernet/powerline/2.4GHz.)
 - Repo `git@github.com:J7U7G7/MamaMonkey.git`, default branch `main`. GitHub Actions auto-release on tags. `update.json` served via `raw.githubusercontent.com`.
 - Feature-complete per the original vision (now-playing, library, playlists, ratings, comfort/polish). See README "Features".
