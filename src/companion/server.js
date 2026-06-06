@@ -1,4 +1,5 @@
 import http from 'node:http';
+import dgram from 'node:dgram';
 import { networkInterfaces } from 'node:os';
 
 function readBody(req) {
@@ -160,6 +161,75 @@ export function lanUrls(port) {
   return found.map((f) => `http://${f.ip}:${port}`);
 }
 
+// Ping a candidate MediaMonkey media-server host:port with our addon protocol.
+// Resolves true only if OUR addon answers (so we know it's MM-with-MamaMonkey).
+export function mmPing(host, port) {
+  return new Promise((resolve) => {
+    const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const to = ctrl ? setTimeout(() => ctrl.abort(), 2500) : null;
+    fetch(`http://${host}:${port}/`, {
+      method: 'POST',
+      headers: { 'MMCustomRequest': 'true', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'mamamonkey', command: 'ping' }),
+      signal: ctrl ? ctrl.signal : undefined,
+    }).then((r) => r.text()).then((t) => {
+      if (to) clearTimeout(to);
+      let ok = false; try { ok = !!JSON.parse(t).result.pong; } catch (_) {}
+      resolve(ok);
+    }).catch(() => { if (to) clearTimeout(to); resolve(false); });
+  });
+}
+
+// SSDP/UPnP discovery: MediaMonkey's media server is a DLNA MediaServer that announces itself.
+// Returns candidate {host,port} parsed from the LOCATION URLs of MediaServer responses.
+export function ssdpDiscover(timeoutMs) {
+  return new Promise((resolve) => {
+    const cands = [], seen = new Set();
+    let sock;
+    try { sock = dgram.createSocket({ type: 'udp4', reuseAddr: true }); } catch (_) { resolve(cands); return; }
+    const done = () => { try { sock.close(); } catch (_) {} resolve(cands); };
+    sock.on('error', done);
+    sock.on('message', (m) => {
+      const loc = (String(m).match(/LOCATION:\s*(\S+)/i) || [])[1];
+      const mm = loc && loc.match(/^http:\/\/([0-9.]+):(\d+)\//i);
+      if (mm) { const key = mm[1] + ':' + mm[2]; if (!seen.has(key)) { seen.add(key); cands.push({ host: mm[1], port: Number(mm[2]) }); } }
+    });
+    try {
+      sock.bind(() => {
+        const msg = Buffer.from(['M-SEARCH * HTTP/1.1', 'HOST:239.255.255.250:1900', 'MAN:"ssdp:discover"', 'MX:2', 'ST:urn:schemas-upnp-org:device:MediaServer:1', '', ''].join('\r\n'));
+        try { sock.send(msg, 1900, '239.255.255.250'); } catch (_) {}
+      });
+    } catch (_) { resolve(cands); return; }
+    setTimeout(done, timeoutMs || 2500);
+  });
+}
+
+// Make sure the companion can reach MM: ping the configured host/port (+ LAN IPs); if none
+// answer, auto-discover MM via UPnP and persist the found host:port. Fallback-only — if the
+// configured port already works (e.g. the default 127.0.0.1 setup), discovery never runs.
+export async function ensureMmReachable(config, persist, deps) {
+  const ping = (deps && deps.ping) || mmPing;
+  const discover = (deps && deps.discover) || ssdpDiscover;
+  const lan = (deps && deps.lan) || (() => lanUrls(0).map((u) => u.slice('http://'.length).replace(/:0$/, '')));
+  const hosts = [config.mmHost || '127.0.0.1'];
+  try { lan().forEach((ip) => { if (ip && hosts.indexOf(ip) < 0) hosts.push(ip); }); } catch (_) {}
+  for (const h of hosts) {
+    if (await ping(h, config.mmPort)) { console.log(`MediaMonkey reachable at ${h}:${config.mmPort}`); return { host: h, port: config.mmPort }; }
+  }
+  console.log(`MediaMonkey not answering on port ${config.mmPort} — discovering via UPnP…`);
+  let cands = []; try { cands = await discover(2500); } catch (_) {}
+  for (const c of cands) {
+    if (await ping(c.host, c.port)) {
+      config.mmHost = c.host; config.mmPort = c.port;
+      try { if (persist) persist({ mmHost: config.mmHost, mmPort: config.mmPort, servePort: config.servePort, autoStart: config.autoStart }); } catch (_) {}
+      console.log(`MediaMonkey discovered at ${c.host}:${c.port} (saved)`);
+      return { host: c.host, port: c.port, discovered: true };
+    }
+  }
+  console.log(`MediaMonkey not found via UPnP; keeping ${config.mmHost}:${config.mmPort}`);
+  return null;
+}
+
 // A little console art for SuperMama 💕 (returned as a string so it's testable).
 export function banner(config) {
   const P = '\x1b[38;5;205m', G = '\x1b[1m\x1b[38;5;222m', B = '\x1b[1m', D = '\x1b[2m', R = '\x1b[0m';
@@ -242,6 +312,9 @@ if (import.meta.main) {
         try { mdns.respond({ answers: [answer] }); } catch (_) {} // proactive announce
       }
     } catch (e) { console.log('mDNS off:', e.message); }
+
+    // --- Ensure MM is reachable (auto-discover host/port via UPnP if the configured one fails) ---
+    try { await ensureMmReachable(config, saveConfig); } catch (_) {}
 
     // --- Banner ---
     let bannerText = banner(config);

@@ -1,6 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHandler, banner, makeForward, rankIp } from '../src/companion/server.js';
+import { createHandler, banner, makeForward, rankIp, ensureMmReachable } from '../src/companion/server.js';
+
+test('ensureMmReachable: when the configured port works, discovery NEVER runs (mom-safe)', async () => {
+  const config = { mmHost: '127.0.0.1', mmPort: 18391, servePort: 8088, autoStart: false };
+  let discoverCalled = false;
+  const r = await ensureMmReachable(config, () => {}, {
+    ping: async (h, p) => h === '127.0.0.1' && p === 18391,
+    discover: async () => { discoverCalled = true; return []; },
+    lan: () => [],
+  });
+  assert.equal(r.host, '127.0.0.1');
+  assert.equal(config.mmPort, 18391);   // unchanged
+  assert.equal(discoverCalled, false);  // the key guarantee
+});
+
+test('ensureMmReachable: discovers + persists MM when the configured port is wrong', async () => {
+  const config = { mmHost: '127.0.0.1', mmPort: 18391, servePort: 8088, autoStart: false };
+  let saved = null;
+  const r = await ensureMmReachable(config, (d) => { saved = d; }, {
+    ping: async (h, p) => h === '192.168.1.54' && p === 16567,   // only the real MM answers
+    discover: async () => [{ host: '10.0.0.9', port: 1 }, { host: '192.168.1.54', port: 16567 }],
+    lan: () => ['192.168.1.97'],
+  });
+  assert.equal(r.discovered, true);
+  assert.equal(config.mmHost, '192.168.1.54');
+  assert.equal(config.mmPort, 16567);
+  assert.equal(saved.mmPort, 16567);
+});
 
 test('rankIp prefers real 192.168 LAN over a virtual 172.x (WSL) adapter', () => {
   assert.ok(rankIp('Ethernet', '192.168.1.54') < rankIp('vEthernet (WSL)', '172.21.112.1'));
